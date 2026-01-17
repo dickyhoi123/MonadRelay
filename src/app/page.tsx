@@ -9,13 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, X } from 'lucide-react';
-import { WalletProvider, useWallet } from '@/contexts/wallet-context';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X } from 'lucide-react';
+import { useWallet } from '@/contexts/wallet-context';
 import { WalletButton } from '@/components/wallet-button';
 import { MusicEditor } from '@/components/music-editor';
 import { ChatRoom } from '@/components/chat-room';
-import { TrackUploader } from '@/components/track-uploader';
 
 // 类型定义
 type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
@@ -101,14 +100,15 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState<'home' | 'editor' | 'chat'>('home');
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [selectedTrackType, setSelectedTrackType] = useState<TrackType>('Drum');
+  const [showWalletDialog, setShowWalletDialog] = useState(false);
   
   // 独立的加载状态映射
   const [loadingStates, setLoadingStates] = useState<{ [key: number]: boolean }>({});
 
   const formatAddress = (addr: string) => {
-    // 从 0x 后面开始显示
+    // 从 0x 后面开始显示，只显示2位
     const withoutPrefix = addr.startsWith('0x') ? addr.slice(2) : addr;
-    return `${withoutPrefix.slice(0, 4)}...${withoutPrefix.slice(-4)}`;
+    return `${withoutPrefix.slice(0, 2)}...${withoutPrefix.slice(-2)}`;
   };
 
   const formatTime = (timestamp: number) => {
@@ -139,6 +139,11 @@ function AppContent() {
   };
 
   const handleJoinSession = (sessionId: number) => {
+    if (!isConnected) {
+      setShowWalletDialog(true);
+      return;
+    }
+    
     setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
     
     setTimeout(() => {
@@ -255,6 +260,7 @@ function HomePage() {
   const { isConnected } = useWallet();
   const [sessions, setSessions] = useState<Session[]>(mockSessions);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showWalletDialog, setShowWalletDialog] = useState(false);
   const [newSession, setNewSession] = useState({
     name: '',
     description: '',
@@ -266,8 +272,9 @@ function HomePage() {
   const [selectedSessionForChat, setSelectedSessionForChat] = useState<Session | null>(null);
 
   const formatAddress = (addr: string) => {
+    // 从 0x 后面开始显示，只显示2位
     const withoutPrefix = addr.startsWith('0x') ? addr.slice(2) : addr;
-    return `${withoutPrefix.slice(0, 4)}...${withoutPrefix.slice(-4)}`;
+    return `${withoutPrefix.slice(0, 2)}...${withoutPrefix.slice(-2)}`;
   };
 
   const formatTime = (timestamp: number) => {
@@ -300,7 +307,10 @@ function HomePage() {
   };
 
   const handleJoinSession = (sessionId: number) => {
-    if (!isConnected) return;
+    if (!isConnected) {
+      setShowWalletDialog(true);
+      return;
+    }
     
     setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
     
@@ -343,21 +353,6 @@ function HomePage() {
           <WalletButton />
         </header>
 
-        {/* 未连接钱包提示 */}
-        {!isConnected && (
-          <Card className="mb-8 bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-purple-800">
-            <CardContent className="p-6 text-center">
-              <Music className="h-16 w-16 text-purple-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">
-                Connect Your Wallet to Get Started
-              </h3>
-              <p className="text-slate-400">
-                Connect your wallet to create sessions, upload tracks, and collaborate with others
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
           {[
@@ -391,9 +386,15 @@ function HomePage() {
                 Completed
               </TabsTrigger>
             </TabsList>
-            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <Dialog open={showCreateDialog} onOpenChange={(open) => {
+              if (!isConnected && open) {
+                setShowWalletDialog(true);
+                return;
+              }
+              setShowCreateDialog(open);
+            }}>
               <DialogTrigger asChild>
-                <Button disabled={!isConnected} className="bg-purple-600 hover:bg-purple-700">
+                <Button className="bg-purple-600 hover:bg-purple-700">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Session
                 </Button>
@@ -618,15 +619,46 @@ function HomePage() {
             </DialogContent>
           </Dialog>
         )}
+
+        {/* Wallet Required Dialog */}
+        <Dialog open={showWalletDialog} onOpenChange={setShowWalletDialog}>
+          <DialogContent className="bg-slate-900 border-slate-800 max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-purple-400" />
+                Wallet Required
+              </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                Please connect your wallet to participate in music creation
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col items-center gap-4 py-6">
+              <div className="p-4 bg-purple-900/30 rounded-full">
+                <Wallet className="h-12 w-12 text-purple-400" />
+              </div>
+              <p className="text-center text-slate-300">
+                Connect your wallet to create sessions, upload tracks, and collaborate with other musicians
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowWalletDialog(false)}
+                className="border-slate-700 text-slate-400 hover:bg-slate-800"
+              >
+                Cancel
+              </Button>
+              <div className="flex-1">
+                <WalletButton />
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
 }
 
 export default function Home() {
-  return (
-    <WalletProvider>
-      <AppContent />
-    </WalletProvider>
-  );
+  return <HomePage />;
 }

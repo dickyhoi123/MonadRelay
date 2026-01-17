@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Smile, Paperclip, Plus, Search, Hash, Users, Settings, MoreVertical, Bell, Pin, Heart, Reply } from 'lucide-react';
+import { Send, Smile, Paperclip, Plus, Search, Hash, Users, Settings, MoreVertical, Bell, Pin, Heart, Reply, X } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -147,9 +147,9 @@ export function ChatRoom({ sessionId, sessionName }: { sessionId: number; sessio
   };
 
   return (
-    <div className="flex h-screen bg-slate-900">
+    <div className="flex h-[600px] bg-slate-900 rounded-lg overflow-hidden">
       {/* 服务器/频道侧边栏 */}
-      <div className="w-72 bg-slate-950 border-r border-slate-800 flex flex-col">
+      <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col flex-shrink-0">
         {/* 服务器信息 */}
         <div className="p-4 border-b border-slate-800">
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
@@ -379,7 +379,7 @@ export function ChatRoom({ sessionId, sessionName }: { sessionId: number; sessio
 
       {/* 成员列表 */}
       {showMembers && (
-        <div className="w-60 bg-slate-950 border-l border-slate-800 p-4">
+        <div className="w-56 bg-slate-950 border-l border-slate-800 p-4 overflow-y-auto flex-shrink-0">
           <h3 className="text-xs font-semibold text-slate-500 uppercase mb-4">
             Online — {members.filter(m => m.status !== 'offline').length}
           </h3>
