@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -8,6 +8,7 @@ import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Music, X, Pi
 import { PianoRollNew, PianoNote } from '@/components/piano-roll-new';
 import { PianoRollReadonly } from '@/components/piano-roll-readonly';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
+import { InstrumentType } from '@/lib/sound-library';
 
 type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
 type TrackId = string;
@@ -136,9 +137,19 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
   const [selectedTrackForReadonly, setSelectedTrackForReadonly] = useState<Track | null>(null);
   const [selectedClipForReadonly, setSelectedClipForReadonly] = useState<AudioClip | null>(null);
 
+  // Toast 消息状态
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+
   const audioEngine = useAudioEngine();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const playInterval = useRef<NodeJS.Timeout | null>(null);
+  const pendingTimeouts = useRef<Set<NodeJS.Timeout>>(new Set());
+
+  // 显示Toast消息
+  const showToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
+    setToastMessage({ type, message });
+    setTimeout(() => setToastMessage(null), 3000);
+  }, []);
 
   // 播放控制
   const handlePlay = async () => {
@@ -150,6 +161,9 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
         clearInterval(playInterval.current);
         playInterval.current = null;
       }
+      // 清理所有pending timeouts
+      pendingTimeouts.current.forEach(timeout => clearTimeout(timeout));
+      pendingTimeouts.current.clear();
       return;
     }
 
@@ -160,21 +174,27 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
     // 找到需要播放的音频片段和钢琴音符
     const clipsToPlay: { clip: AudioClip; track: Track }[] = [];
     const pianoNotesToPlay: { note: PianoNote; track: Track; clip: AudioClip }[] = [];
-    
+
     tracks.forEach((track, trackIndex) => {
       if (track.isMuted) return;
       track.clips.forEach(clip => {
+        // 验证clip边界
+        if (clip.startTime < 0 || clip.startTime >= TOTAL_BEATS) return;
+
         if (clip.startTime >= position && clip.startTime < TOTAL_BEATS) {
           clipsToPlay.push({ clip, track });
-          
+
           // 收集钢琴音符
           if (clip.pianoNotes && clip.pianoNotes.length > 0) {
             clip.pianoNotes.forEach(note => {
+              // 验证note边界
+              if (note.duration <= 0) return;
+
               // 将16分音符转换为拍子
               const noteStartTimeInBeats = note.startTime / 4; // 4个16分音符 = 1拍
               const clipStartTimeInBeats = clip.startTime;
               const absoluteStartTime = clipStartTimeInBeats + noteStartTimeInBeats;
-              
+
               if (absoluteStartTime >= position && absoluteStartTime < TOTAL_BEATS) {
                 pianoNotesToPlay.push({ note, track, clip });
               }
@@ -188,9 +208,13 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
     for (const { clip, track } of clipsToPlay) {
       if (clip.audioBuffer) {
         const delay = (clip.startTime - position) * 0.5; // 0.5秒/拍
-        setTimeout(() => {
-          audioEngine?.playAudioClip(clip.audioBuffer!, delay, track.volume / 100, track.id);
-        }, delay * 1000);
+        if (delay >= 0) {
+          const timeoutId = setTimeout(() => {
+            audioEngine?.playAudioClip(clip.audioBuffer!, delay, track.volume / 100, track.id);
+            pendingTimeouts.current.delete(timeoutId);
+          }, delay * 1000);
+          pendingTimeouts.current.add(timeoutId);
+        }
       }
     }
 
@@ -203,11 +227,29 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
       const delay = (absoluteStartTimeInBeats - position) * 0.5; // 0.5秒/拍
 
       if (delay >= 0) {
-        setTimeout(() => {
-          const frequency = noteToFrequency(note.note, note.octave);
+        const timeoutId = setTimeout(() => {
+          // 使用音色库播放音符，而不是简单的sine波形
           const duration = note.duration * 0.125; // 每个16分音符0.125秒
-          audioEngine?.playNote(frequency, duration, note.velocity, 'sine');
+
+          // 根据trackType映射到InstrumentType
+          const instrumentTypeMap: Record<TrackType, InstrumentType> = {
+            'Drum': 'drum',
+            'Bass': 'bass',
+            'Synth': 'synth',
+            'Vocal': 'vocal'
+          };
+
+          const instrumentType = instrumentTypeMap[track.type] || 'synth';
+          audioEngine?.playInstrumentNote(
+            instrumentType,
+            note.note as any,
+            note.octave,
+            duration,
+            note.velocity
+          );
+          pendingTimeouts.current.delete(timeoutId);
         }, delay * 1000);
+        pendingTimeouts.current.add(timeoutId);
       }
     });
 
@@ -221,6 +263,9 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
           clearInterval(playInterval.current);
           playInterval.current = null;
         }
+        // 清理所有pending timeouts
+        pendingTimeouts.current.forEach(timeout => clearTimeout(timeout));
+        pendingTimeouts.current.clear();
       } else {
         setCurrentBeat(position);
       }
@@ -240,11 +285,24 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
 
     try {
       const audioBuffer = await audioEngine?.loadAudioFile(file);
-      const duration = audioBuffer ? Math.ceil(audioBuffer.duration / 0.5) : 4; // 转换为拍子
+      if (!audioBuffer) {
+        showToast('error', 'Failed to load audio file');
+        return;
+      }
+      const duration = Math.ceil(audioBuffer.duration / 0.5); // 转换为拍子
 
       // 添加到当前轨道
       const targetTrack = tracks.find(t => t.type === trackType);
-      if (!targetTrack) return;
+      if (!targetTrack) {
+        showToast('error', 'Target track not found');
+        return;
+      }
+
+      // 验证clip边界
+      if (currentBeat + duration > TOTAL_BEATS) {
+        showToast('error', 'Clip duration exceeds track length');
+        return;
+      }
 
       const newClip: AudioClip = {
         id: `clip-${Date.now()}`,
@@ -264,8 +322,10 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
 
       // 播放预览
       audioEngine?.playAudioClip(audioBuffer!, 0, 0.5);
+      showToast('success', `Audio "${file.name}" uploaded successfully`);
     } catch (error) {
       console.error('Failed to load audio:', error);
+      showToast('error', 'Failed to load audio file');
     }
   };
 
@@ -378,6 +438,14 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
     }
   }, [draggingClip]);
 
+  // 清理所有pending timeouts，防止组件卸载时内存泄漏
+  useEffect(() => {
+    return () => {
+      pendingTimeouts.current.forEach(timeout => clearTimeout(timeout));
+      pendingTimeouts.current.clear();
+    };
+  }, []);
+
   // 打开钢琴帘（可编辑）
   const handleOpenPianoRoll = (trackId: TrackId, clipId?: string) => {
     const track = tracks.find(t => t.id === trackId);
@@ -449,6 +517,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
     setTimeout(() => {
       setIsSaving(false);
       onSave?.({ tracks, currentBeat });
+      showToast('success', `${trackType} track saved successfully!`);
     }, 1500);
   };
 
@@ -462,6 +531,19 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 p-6">
+      {/* Toast 通知 */}
+      {toastMessage && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg animate-in slide-in-from-right transition-all ${
+          toastMessage.type === 'success' ? 'bg-green-600 text-white' :
+          toastMessage.type === 'error' ? 'bg-red-600 text-white' :
+          'bg-blue-600 text-white'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{toastMessage.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         {/* 顶部工具栏 */}
         <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-4 mb-6">
