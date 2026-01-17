@@ -341,17 +341,24 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
 
   // 打开钢琴帘
   const handleOpenPianoRoll = (trackId: TrackId, clipId?: string) => {
+    console.log('Opening Piano Roll for track:', trackId, 'clip:', clipId);
     const track = tracks.find(t => t.id === trackId);
-    if (!track) return;
+    if (!track) {
+      console.error('Track not found:', trackId);
+      return;
+    }
 
     setSelectedTrackForPiano(track);
     if (clipId) {
       const clip = track.clips.find(c => c.id === clipId);
       setSelectedClipForPiano(clip || null);
+      console.log('Opening with clip:', clip);
     } else {
       setSelectedClipForPiano(null);
+      console.log('Opening without clip');
     }
     setPianoRollOpen(true);
+    console.log('Piano Roll opened:', true);
   };
 
   // 保存钢琴音符

@@ -39,6 +39,7 @@ const TOTAL_BARS = 8;
 const BEATS_PER_BAR = 4;
 
 export function PianoRoll({ isOpen, onClose, trackId, trackName, onSave, initialNotes = [] }: PianoRollProps) {
+  console.log('PianoRoll render - isOpen:', isOpen, 'trackId:', trackId, 'trackName:', trackName);
   const [notes, setNotes] = useState<PianoNote[]>(initialNotes);
   const [selectedSynth, setSelectedSynth] = useState(SYNTH_PRESETS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -211,8 +212,8 @@ export function PianoRoll({ isOpen, onClose, trackId, trackName, onSave, initial
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-6xl bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ background: 'rgba(0, 0, 0, 0.95)', backdropFilter: 'blur(10px)' }}>
+      <div className="w-full max-w-6xl bg-slate-900 border-2 border-purple-500 rounded-2xl overflow-hidden shadow-2xl" style={{ boxShadow: '0 0 60px rgba(168, 85, 247, 0.3)', maxHeight: '90vh' }}>
         {/* Header */}
         <CardHeader className="border-b border-slate-800 px-6 py-4">
           <div className="flex items-center justify-between">
@@ -241,7 +242,7 @@ export function PianoRoll({ isOpen, onClose, trackId, trackName, onSave, initial
           </div>
         </CardHeader>
 
-        <div className="flex h-[600px]">
+        <div className="flex min-h-0" style={{ height: 'calc(90vh - 80px)' }}>
           {/* Sidebar - Synth Settings */}
           <div className="w-64 border-r border-slate-800 p-4 bg-slate-900/50">
             <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
