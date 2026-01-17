@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useAccount, usePublicClient } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -9,6 +10,8 @@ import { PianoRollNew, PianoNote, INSTRUMENT_PRESETS } from '@/components/piano-
 import { PianoRollReadonly } from '@/components/piano-roll-readonly';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
 import { InstrumentType, NoteName } from '@/lib/sound-library';
+import { useMintTrackNFT, waitForTransaction } from '@/lib/contract-hooks';
+import { useSwitchChain } from 'wagmi';
 
 // 音色预设类型
 interface InstrumentPreset {
@@ -155,6 +158,12 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
   const [selectedClipForReadonly, setSelectedClipForReadonly] = useState<AudioClip | null>(null);
 
   // Toast 消息状态
+
+  // Web3 hooks
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { switchChain } = useSwitchChain();
+  const { mintTrack } = useMintTrackNFT();
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   const audioEngine = useAudioEngine();
@@ -705,6 +714,21 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
   const handleMintNFT = async () => {
     setIsSaving(true);
     try {
+      // 检查钱包连接
+      if (!address) {
+        showToast('error', 'Please connect your wallet first.');
+        setIsSaving(false);
+        return;
+      }
+
+      // 检查网络
+      const chainId = await publicClient?.getChainId();
+      if (chainId !== 31337) {
+        showToast('error', 'Please switch to Hardhat Local network (Chain ID: 31337).');
+        setIsSaving(false);
+        return;
+      }
+
       // 动态导入编码模块
       const { encodeTracksToJSON, calculateTotalSixteenthNotes } = await import('@/lib/music-encoder');
 
@@ -723,34 +747,53 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
       console.log('BPM:', bpm);
       console.log('Total 16th notes:', totalSixteenthNotes);
 
-      // 模拟铸造延迟
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // 生成模拟的 Token ID（实际应该从合约返回）
-      const mockTokenId = Date.now() % 1000;
-
-      // 保存到 localStorage 以便测试
-      const nftData = {
-        tokenId: mockTokenId,
-        trackType: trackType,
-        bpm: bpm,
-        totalSixteenthNotes: totalSixteenthNotes,
-        encodedTracks: encodedTracks,
-        createdAt: new Date().toISOString()
+      // TrackType 映射到合约枚举值
+      const trackTypeMap: Record<TrackType, number> = {
+        Drum: 0,
+        Bass: 1,
+        Synth: 2,
+        Vocal: 3
       };
 
-      const existingNFTs = JSON.parse(localStorage.getItem('mintedNFTs') || '[]');
-      existingNFTs.push(nftData);
-      localStorage.setItem('mintedNFTs', JSON.stringify(existingNFTs));
+      // 调用合约铸造 NFT
+      const hash = await mintTrack(
+        trackTypeMap[trackType],
+        bpm,
+        totalSixteenthNotes,
+        encodedTracks
+      );
 
-      showToast('success', `Track NFT minted successfully! Token ID: ${mockTokenId}. You can decode it in the NFT Decoder page.`);
+      showToast('success', `Minting NFT... Transaction submitted. Hash: ${hash.substring(0, 10)}...`);
+
+      // 等待交易确认
+      if (publicClient) {
+        const receipt = await waitForTransaction(publicClient, hash);
+        console.log('Transaction confirmed:', receipt);
+
+        // 从 Transfer 事件中获取 Token ID
+        if (receipt.logs && receipt.logs.length > 0) {
+          const transferLog = receipt.logs.find((log: any) =>
+            log.topics && log.topics.length === 4
+          );
+
+          let tokenId = BigInt(0);
+          if (transferLog && transferLog.topics[3]) {
+            tokenId = BigInt(transferLog.topics[3]);
+          }
+
+          showToast('success', `Track NFT minted successfully! Token ID: ${tokenId}. You can decode it in the NFT Decoder page.`);
+        } else {
+          showToast('success', `Track NFT minted successfully! You can decode it in the NFT Decoder page.`);
+        }
+      }
+
       setIsSaving(false);
 
       // 保存后继续其他操作
       onSave?.({ tracks, currentBeat });
     } catch (error) {
       console.error('Failed to mint NFT:', error);
-      showToast('error', 'Failed to mint NFT. Please try again.');
+      showToast('error', `Failed to mint NFT: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsSaving(false);
     }
   };

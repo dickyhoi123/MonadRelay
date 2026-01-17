@@ -62,41 +62,8 @@ export default function NFTDecoder() {
     try {
       const tokenIdNum = parseInt(tokenId);
 
-      // 尝试从 localStorage 读取模拟数据
-      const mintedNFTs = JSON.parse(localStorage.getItem('mintedNFTs') || '[]');
-      const nftData = mintedNFTs.find((nft: any) => nft.tokenId === tokenIdNum);
-
-      if (nftData) {
-        // 使用模拟数据
-        console.log('Using mock NFT data:', nftData);
-
-        if (!validateEncodedData(nftData.encodedTracks)) {
-          throw new Error('Invalid encoded music data');
-        }
-
-        // 解码 JSON 数据
-        const decoded = decodeJSONToTracks(nftData.encodedTracks);
-
-        if (!decoded) {
-          throw new Error('Failed to decode music data');
-        }
-
-        // 转换为前端格式
-        const tracks: DecodedTrack[] = Object.entries(decoded.tracks).map(([trackType, notes]) => ({
-          type: trackType,
-          notes: notes.map(encodedNoteToPianoNote)
-        }));
-
-        setDecodedData({
-          bpm: nftData.bpm,
-          totalSixteenthNotes: nftData.totalSixteenthNotes,
-          tracks
-        });
-
-        // 显示提示
-        showToast('info', `Decoded NFT from local storage (Token ID: ${tokenIdNum})`);
-      } else if (isConnected) {
-        // 尝试从合约读取（实际功能）
+      // 优先尝试从合约读取真实数据
+      if (isConnected) {
         try {
           const musicData = await getMusicData(tokenIdNum);
 
@@ -127,13 +94,51 @@ export default function NFTDecoder() {
             totalSixteenthNotes: musicData.totalSixteenthNotes,
             tracks
           });
+
+          showToast('success', `Successfully decoded NFT from contract (Token ID: ${tokenIdNum})`);
+          setLoading(false);
+          return;
         } catch (contractError: any) {
-          // 如果合约调用失败，显示错误
-          throw new Error(contractError.message || 'Failed to fetch NFT data from contract');
+          console.warn('Contract read failed, trying local storage:', contractError);
+          // 如果合约调用失败，继续尝试本地存储
         }
+      }
+
+      // 如果合约读取失败或未连接钱包，尝试从 localStorage 读取
+      const mintedNFTs = JSON.parse(localStorage.getItem('mintedNFTs') || '[]');
+      const nftData = mintedNFTs.find((nft: any) => nft.tokenId === tokenIdNum);
+
+      if (nftData) {
+        // 使用本地存储的模拟数据
+        console.log('Using mock NFT data from local storage:', nftData);
+
+        if (!validateEncodedData(nftData.encodedTracks)) {
+          throw new Error('Invalid encoded music data');
+        }
+
+        // 解码 JSON 数据
+        const decoded = decodeJSONToTracks(nftData.encodedTracks);
+
+        if (!decoded) {
+          throw new Error('Failed to decode music data');
+        }
+
+        // 转换为前端格式
+        const tracks: DecodedTrack[] = Object.entries(decoded.tracks).map(([trackType, notes]) => ({
+          type: trackType,
+          notes: notes.map(encodedNoteToPianoNote)
+        }));
+
+        setDecodedData({
+          bpm: nftData.bpm,
+          totalSixteenthNotes: nftData.totalSixteenthNotes,
+          tracks
+        });
+
+        showToast('info', `Decoded NFT from local storage (Token ID: ${tokenIdNum}). Connect wallet to use contract data.`);
       } else {
-        // 如果没有连接钱包也没有本地数据
-        throw new Error(`No NFT found with Token ID ${tokenIdNum}. Please mint a Track NFT first or connect your wallet.`);
+        // 两种方式都失败了
+        throw new Error(`No NFT found with Token ID ${tokenIdNum}. Please connect your wallet and ensure the NFT exists on the Hardhat Local network.`);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to decode NFT');

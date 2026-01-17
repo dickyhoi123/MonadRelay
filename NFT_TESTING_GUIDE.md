@@ -1,196 +1,247 @@
-# NFT 音频编码解码系统 - 测试指南
+# NFT 音频编码解码系统测试指南
 
 ## 概述
 
-本系统实现了将音乐作品编码为 NFT，并从 NFT 解码回音频的完整流程。所有处理都在浏览器端完成，无需后端服务器。
+本系统实现了基于 Monad 区块链的多人协作音乐创作平台的 NFT 音频编码解码功能。用户可以在音乐编辑器中创作音乐，将作品编码为 NFT 铸造到链上，然后从 NFT 解码回音乐并播放。
 
-## 功能特性
+## 已完成的组件
 
-### 1. 音乐编码
-- 将 Tracks 数据编码为 JSON 格式
-- 支持音符、时值、力度、乐器类型等完整信息
-- 自动计算 BPM 和总 16 分音符数
+### 1. 智能合约（Solidity）
 
-### 2. NFT 铸造（模拟）
-- 将编码后的数据铸造为 Track NFT
-- 使用 localStorage 模拟链上存储
-- 生成唯一的 Token ID
+合约已部署到 Hardhat 本地测试网（Chain ID: 31337）
 
-### 3. NFT 解码
-- 从 NFT 读取编码的音乐数据
-- 解码为可播放的音符数据
-- 支持实时播放
+- **TrackNFT**: `0x5FbDB2315678afecb367f032d93F642f64180aa3`
+  - 代表个人创作的单一音轨
+  - 支持在铸造时存储编码的音乐数据（JSON 格式）
+  - 提供函数：`mintTrackWithMusicData`, `getMusicData`
+
+- **MusicSession**: `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`
+  - 管理音乐创作的接力流程
+  - 支持创建 Session、提交 Track、最终化
+
+- **MasterComposition**: `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512`
+  - 代表最终合成的完整音乐作品
+  - 支持多方所有权和收益分配
+
+### 2. 前端集成
+
+- **音乐编码/解码工具** (`src/lib/music-encoder.ts`):
+  - `encodeTracksToJSON`: 将音轨数据编码为 JSON
+  - `decodeJSONToTracks`: 从 JSON 解码回音轨数据
+  - `calculateTotalSixteenthNotes`: 计算 16 分音符总数
+  - `validateEncodedData`: 验证编码数据有效性
+
+- **Web3 合约交互 Hooks** (`src/lib/contract-hooks.ts`):
+  - `useMintTrackNFT`: 铸造 Track NFT
+  - `useGetTrackMusicData`: 从 NFT 读取音乐数据
+  - `useCreateSession`: 创建 Music Session
+  - `useJoinAndCommit`: 加入 Session 并提交 Track
+  - `useGetSessionInfo`: 获取 Session 信息
+  - `useGetMasterInfo`: 获取 Master NFT 信息
+
+- **NFT 解码页面** (`src/app/nft-decoder/page.tsx`):
+  - 支持输入 Token ID 解码 NFT
+  - 显示音符数据表格
+  - 实时播放解码的音乐
+  - 下载 JSON 文件
+
+- **音乐编辑器更新** (`src/components/music-editor.tsx`):
+  - 添加 "Mint NFT" 按钮
+  - 实现真实的合约交互（不再使用模拟数据）
+  - 支持网络切换（需要连接到 Hardhat Local）
+
+### 3. 配置文件
+
+- **合约配置** (`src/lib/contracts.config.ts`):
+  - 合约地址
+  - 合约 ABI
+
+- **Wagmi 配置** (`src/lib/wagmi.ts`):
+  - 添加 Hardhat Local 网络（Chain ID: 31337）
+  - 配置 RPC URL: `http://127.0.0.1:8545`
+
+## 测试环境设置
+
+### 1. 启动 Hardhat 本地节点
+
+```bash
+cd contracts
+nohup npx hardhat node > /tmp/hardhat-node.log 2>&1 &
+```
+
+检查节点是否运行：
+```bash
+ss -lptn 'sport = :8545'
+```
+
+### 2. 确保合约已部署
+
+如果需要重新部署：
+```bash
+cd contracts
+pnpm run deploy:local
+```
+
+合约地址会保存在 `contracts/deployment.json`
+
+### 3. 启动前端应用
+
+```bash
+# 前端应该已经在运行（端口 5000）
+# 如果没有，运行：
+coze dev
+```
 
 ## 测试流程
 
-### 前置条件
-1. 确保服务运行在 http://localhost:5000
-2. 连接 Web3 钱包（MetaMask 等）
-3. 准备一个音乐作品
+### 步骤 1: 连接钱包并切换网络
 
-### 测试步骤
+1. 打开应用首页
+2. 点击右上角 "Connect Wallet"
+3. 在 MetaMask 中添加 Hardhat Local 网络：
+   - 网络名称: Hardhat Local
+   - RPC URL: http://127.0.0.1:8545
+   - 链 ID: 31337
+   - 货币符号: ETH
+4. 在 MetaMask 中导入测试账户（从 Hardhat 节点日志中获取私钥）
+5. 切换到 Hardhat Local 网络
 
-#### 1. 创建或编辑音乐作品
-1. 访问首页 http://localhost:5000
-2. 点击 "Create Session" 或选择一个 Session
-3. 打开 Music Editor
-4. 使用 Piano Roll 添加音符
-5. 确保至少有一个音轨包含音符
+### 步骤 2: 创建 Session 并创作音乐
 
-#### 2. 编码并铸造 NFT
-1. 在 Music Editor 中，点击 "Mint NFT" 按钮（绿色按钮）
-2. 等待编码和铸造完成（约 2 秒）
-3. 系统会显示成功消息，包含 Token ID
-4. NFT 数据会保存到 localStorage
+1. 点击 "Start New Session"
+2. 填写 Session 信息（名称、描述、风格等）
+3. 选择要创作的音轨类型（Drum/Bass/Synth/Vocal）
+4. 在音乐编辑器中创作音乐
+5. 使用钢琴帘添加音符
 
-#### 3. 解码 NFT
-1. 点击首页的 "NFT Decoder" 按钮
-2. 进入 NFT Decoder 页面
-3. 输入刚才铸造的 Token ID
-4. 点击 "Decode" 按钮
-5. 查看解码后的音乐数据
+### 步骤 3: 铸造 Track NFT
 
-#### 4. 播放解码的音乐
-1. 在 NFT Decoder 页面，点击 "Play" 按钮
-2. 系统会使用解码的数据播放音乐
-3. 验证播放的音乐与原作品一致
+1. 在音乐编辑器中点击 "Mint NFT" 按钮（绿色）
+2. 等待交易确认
+3. 成功后会显示 Token ID
+4. 记下这个 Token ID（例如：1, 2, 3...）
 
-#### 5. 下载 JSON
-1. 点击 "Download JSON" 按钮
-2. 保存解码的 JSON 文件
-3. 可以在其他工具中分析该 JSON
+### 步骤 4: 解码 NFT 并播放
 
-## 数据格式说明
+1. 点击导航栏的 "NFT Decoder"
+2. 输入刚才记录的 Token ID
+3. 点击 "Decode" 按钮
+4. 查看解码的音符数据
+5. 点击 "Play" 按钮播放音乐
+6. 点击 "Download JSON" 下载音乐数据
 
-### 编码格式（JSON）
+## 后端测试脚本
+
+运行完整的合约测试：
+
+```bash
+cd contracts
+npx hardhat run scripts/test-contract.js --network localhost
+```
+
+测试内容：
+1. ✅ 铸造 Track NFT（包含音乐数据）
+2. ✅ 从 NFT 读取音乐数据
+3. ✅ 创建 Music Session
+4. ✅ 加入 Session 并提交 Track
+5. ✅ 获取 Session 信息
+
+## 数据格式
+
+### 编码的音乐数据（JSON）
+
 ```json
 {
-  "Drum": [
-    [36, 0, 1, 90, "kick"],
-    [38, 4, 1, 80, "snare"],
-    [42, 8, 1, 70, "hihat"]
-  ],
-  "Bass": [
-    [28, 0, 4, 85, "sine-bass"],
-    [33, 8, 4, 80, "saw-bass"]
-  ]
+  "bpm": 120,
+  "totalSixteenthNotes": 64,
+  "tracks": {
+    "Drum": [
+      {
+        "note": "C",
+        "octave": 3,
+        "startTime": 0,
+        "duration": 4,
+        "velocity": 100,
+        "instrumentType": "drum_kick"
+      }
+    ],
+    "Bass": [
+      {
+        "note": "C",
+        "octave": 2,
+        "startTime": 0,
+        "duration": 16,
+        "velocity": 90,
+        "instrumentType": "bass_synth"
+      }
+    ],
+    "Synth": [],
+    "Vocal": []
+  }
 }
 ```
 
-### 音符数组格式
-`[MIDI音符编号, 开始时间(16分音符), 时值(16分音符), 力度(0-100), 乐器ID]`
+## 常见问题
 
-## 合约集成说明
+### Q: 铸造 NFT 时提示 "Please switch to Hardhat Local network"
 
-### 已实现的合约接口
-- **TrackNFT**: `mintTrackWithMusicData`, `getMusicData`
-- **MusicSession**: `createSession`, `joinAndCommit`, `getSessionInfo`
-- **MasterComposition**: `getCompositionInfo`
+A: 请确保 MetaMask 已连接到 Hardhat Local 网络（Chain ID: 31337）
 
-### 集成方式
-- 使用 wagmi + viem 进行合约交互
-- 支持 Hardhat 本地测试网（需要解决版本兼容问题）
-- 当前使用 localStorage 模拟合约存储
+### Q: 解码 NFT 时提示 "No NFT found"
 
-## 实际部署到区块链
+A: 请确保：
+1. 输入正确的 Token ID
+2. 钱包已连接到 Hardhat Local 网络
+3. 该 NFT 确实已经铸造
 
-### 准备工作
-1. 解决 Hardhat 版本兼容问题
-2. 编译合约：`npx hardhat compile`
-3. 部署合约：`npx hardhat run scripts/deploy.ts --network localhost`
+### Q: Hardhat 节点崩溃了怎么办？
 
-### 前端配置
-1. 创建 `.env.local` 文件：
-```
-NEXT_PUBLIC_TRACK_NFT_ADDRESS=<TrackNFT合约地址>
-NEXT_PUBLIC_MASTER_COMPOSITION_ADDRESS=<MasterComposition合约地址>
-NEXT_PUBLIC_MUSIC_SESSION_ADDRESS=<MusicSession合约地址>
+A: 重新启动节点：
+```bash
+pkill -f "hardhat node"
+cd contracts
+nohup npx hardhat node > /tmp/hardhat-node.log 2>&1 &
 ```
 
-2. 修改 `src/lib/contract-hooks.ts` 中的 CONTRACT_ADDRESSES
+### Q: 如何查看交易日志？
 
-3. 重启开发服务器
+A: 查看节点日志：
+```bash
+tail -f /tmp/hardhat-node.log
+```
 
-## 故障排除
+### Q: 交易失败怎么办？
 
-### 问题：无法解码 NFT
-- 检查 Token ID 是否正确
-- 确保已经铸造了该 NFT
-- 检查浏览器控制台是否有错误
+A: 检查 MetaMask 中的交易详情，查看错误信息。常见原因：
+- 账户余额不足
+- 网络不匹配
+- 合约调用参数错误
 
-### 问题：播放无声音
-- 确保浏览器已授予音频权限
-- 检查音频引擎是否正确初始化
-- 确认音符数据有效
+## 后续部署
 
-### 问题：编码数据格式错误
-- 检查音符的 MIDI 编号是否在有效范围内（0-127）
-- 验证时值是否大于 0
-- 确认力度在 0-100 范围内
+当前配置为 Hardhat 本地测试网。如需部署到 Monad Testnet：
 
-## 性能优化
-
-### 已实现的优化
-1. 使用 requestAnimationFrame 实现平滑播放
-2. 清理音频上下文防止内存泄漏
-3. 使用 localStorage 缓存 NFT 数据
-
-### 可进一步优化
-1. 实现音频预加载
-2. 使用 Web Worker 处理编码/解码
-3. 添加播放进度条
-
-## 安全性考虑
-
-### 数据验证
-- 编码前验证音符数据有效性
-- 解码前验证 JSON 格式
-- 限制编码数据大小（最大 5KB）
-
-### 合约安全
-- 使用 ReentrancyGuard 防止重入攻击
-- 使用 Ownable 限制关键函数
-- 验证 NFT 所有权
-
-## 未来计划
-
-1. **完整合约集成**
-   - 解决 Hardhat 版本兼容问题
-   - 部署到 Monad Testnet
-   - 实现完整的链上存储
-
-2. **增强功能**
-   - 支持多种音频格式
-   - 添加音轨混音功能
-   - 实现音频导出为 WAV/MP3
-
-3. **用户体验**
-   - 添加可视化播放器
-   - 实现音频波形显示
-   - 支持拖拽上传音频文件
-
-## 测试检查清单
-
-- [ ] 能够创建音乐作品
-- [ ] 能够将作品编码为 JSON
-- [ ] 能够模拟铸造 NFT
-- [ ] 能够从 localStorage 读取 NFT 数据
-- [ ] 能够解码 NFT 并显示音符数据
-- [ ] 能够播放解码的音乐
-- [ ] 音符播放的时值准确
-- [ ] 音符播放的音高准确
-- [ ] 能够下载 JSON 文件
-- [ ] 所有功能没有 TypeScript 错误
-- [ ] 所有功能没有运行时错误
+1. 修改 `src/lib/contracts.config.ts` 中的合约地址
+2. 在 MetaMask 中添加 Monad Testnet 网络（已预配置）
+3. 在 MetaMask 中导入测试账户的私钥
+4. 在 Hardhat 中部署到 Monad Testnet
 
 ## 技术栈
 
+- **智能合约**: Solidity 0.8.20, Hardhat 2.28.3
 - **前端**: Next.js 16, React 19, TypeScript 5
-- **UI**: Tailwind CSS 4, shadcn/ui
-- **Web3**: wagmi, viem
+- **Web3**: wagmi 3.3.2, viem 2.44.4
 - **音频**: Web Audio API
-- **合约**: Solidity 0.8.20, Foundry
+- **UI**: shadcn/ui, Tailwind CSS 4
 
-## 联系方式
+## 总结
 
-如有问题，请查看项目文档或提交 Issue。
+系统已完整实现 NFT 音频编码解码功能，支持：
+- ✅ 在浏览器端将音乐编码为 JSON
+- ✅ 将编码数据铸造到 NFT
+- ✅ 从 NFT 解码回音乐数据
+- ✅ 播放解码的音乐
+- ✅ 真实的合约交互（非模拟）
+- ✅ Hardhat 本地测试网完整测试
+
+所有测试通过，系统可以正常运行！

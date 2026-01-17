@@ -6,119 +6,12 @@
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 import { useCallback } from 'react';
-
-// 合约 ABI（精简版，只包含需要的函数）
-const TRACK_NFT_ABI = [
-  {
-    "inputs": [
-      {"name": "to", "type": "address"},
-      {"name": "trackType", "type": "uint8"},
-      {"name": "bpm", "type": "uint8"},
-      {"name": "totalSixteenthNotes", "type": "uint16"},
-      {"name": "encodedTracks", "type": "string"}
-    ],
-    "name": "mintTrackWithMusicData",
-    "outputs": [{"name": "", "type": "uint256"}],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [{"name": "tokenId", "type": "uint256"}],
-    "name": "getMusicData",
-    "outputs": [
-      {"name": "bpm", "type": "uint8"},
-      {"name": "totalSixteenthNotes", "type": "uint16"},
-      {"name": "encodedTracks", "type": "string"}
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{"name": "tokenId", "type": "uint256"}],
-    "name": "ownerOf",
-    "outputs": [{"name": "", "type": "address"}],
-    "stateMutability": "view",
-    "type": "function"
-  }
-] as const;
-
-const MUSIC_SESSION_ABI = [
-  {
-    "inputs": [
-      {"name": "sessionName", "type": "string"},
-      {"name": "description", "type": "string"},
-      {"name": "genre", "type": "string"},
-      {"name": "bpm", "type": "uint256"},
-      {"name": "maxTracks", "type": "uint256"}
-    ],
-    "name": "createSession",
-    "outputs": [{"name": "", "type": "uint256"}],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {"name": "sessionId", "type": "uint256"},
-      {"name": "trackId", "type": "uint256"},
-      {"name": "trackType", "type": "uint8"}
-    ],
-    "name": "joinAndCommit",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [{"name": "sessionId", "type": "uint256"}],
-    "name": "getSessionInfo",
-    "outputs": [
-      {"name": "id", "type": "uint256"},
-      {"name": "sessionName", "type": "string"},
-      {"name": "description", "type": "string"},
-      {"name": "genre", "type": "string"},
-      {"name": "bpm", "type": "uint256"},
-      {"name": "maxTracks", "type": "uint256"},
-      {"name": "currentTrackIndex", "type": "uint256"},
-      {"name": "isFinalized", "type": "bool"},
-      {"name": "createdAt", "type": "uint256"},
-      {"name": "completedAt", "type": "uint256"},
-      {"name": "contributors", "type": "address[]"},
-      {"name": "trackIds", "type": "uint256[]"},
-      {"name": "trackFilledStatus", "type": "bool[4]"}
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{"name": "sessionId", "type": "uint256"}],
-    "name": "getCurrentTrackType",
-    "outputs": [{"name": "", "type": "uint8"}],
-    "stateMutability": "view",
-    "type": "function"
-  }
-] as const;
-
-const MASTER_COMPOSITION_ABI = [
-  {
-    "inputs": [{"name": "masterTokenId", "type": "uint256"}],
-    "name": "getCompositionInfo",
-    "outputs": [
-      {"name": "sessionId", "type": "uint256"},
-      {"name": "contributors", "type": "address[]"},
-      {"name": "trackIds", "type": "uint256[]"},
-      {"name": "createdAt", "type": "uint256"},
-      {"name": "totalRevenue", "type": "uint256"}
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  }
-] as const;
-
-// 合约地址（Hardhat 本地测试网）
-const CONTRACT_ADDRESSES = {
-  trackNFT: process.env.NEXT_PUBLIC_TRACK_NFT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3',
-  musicSession: process.env.NEXT_PUBLIC_MUSIC_SESSION_ADDRESS || '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512',
-  masterComposition: process.env.NEXT_PUBLIC_MASTER_COMPOSITION_ADDRESS || '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0'
-};
+import {
+  CONTRACT_ADDRESSES,
+  TRACK_NFT_ABI,
+  MUSIC_SESSION_ABI,
+  MASTER_COMPOSITION_ABI
+} from './contracts.config';
 
 /**
  * 铸造 Track NFT
@@ -168,27 +61,22 @@ export function useGetTrackMusicData() {
   const publicClient = usePublicClient();
 
   const getMusicData = useCallback(async (tokenId: number) => {
+    if (!publicClient) {
+      throw new Error('Public client not available');
+    }
+
     try {
-      const data = await publicClient!.readContract({
+      const data = await publicClient.readContract({
         address: CONTRACT_ADDRESSES.trackNFT as `0x${string}`,
         abi: TRACK_NFT_ABI,
         functionName: 'getMusicData',
         args: [BigInt(tokenId)]
-      });
-
-      // data 的类型是 unknown，需要正确处理
-      if (!Array.isArray(data) || data.length !== 3) {
-        throw new Error('Invalid response format');
-      }
-
-      const bpm = Number(data[0]);
-      const totalSixteenthNotes = Number(data[1]);
-      const encodedTracks = String(data[2]);
+      }) as unknown as readonly [bigint, bigint, string];
 
       return {
-        bpm,
-        totalSixteenthNotes,
-        encodedTracks
+        bpm: Number(data[0]),
+        totalSixteenthNotes: Number(data[1]),
+        encodedTracks: data[2]
       };
     } catch (error) {
       console.error('Failed to get track music data:', error);
@@ -274,8 +162,12 @@ export function useGetSessionInfo() {
   const publicClient = usePublicClient();
 
   const getSessionInfo = useCallback(async (sessionId: number) => {
+    if (!publicClient) {
+      throw new Error('Public client not available');
+    }
+
     try {
-      const info = await publicClient!.readContract({
+      const info = await publicClient.readContract({
         address: CONTRACT_ADDRESSES.musicSession as `0x${string}`,
         abi: MUSIC_SESSION_ABI,
         functionName: 'getSessionInfo',
@@ -299,8 +191,12 @@ export function useGetMasterInfo() {
   const publicClient = usePublicClient();
 
   const getMasterInfo = useCallback(async (masterTokenId: number) => {
+    if (!publicClient) {
+      throw new Error('Public client not available');
+    }
+
     try {
-      const info = await publicClient!.readContract({
+      const info = await publicClient.readContract({
         address: CONTRACT_ADDRESSES.masterComposition as `0x${string}`,
         abi: MASTER_COMPOSITION_ABI,
         functionName: 'getCompositionInfo',
@@ -321,11 +217,11 @@ export function useGetMasterInfo() {
  * 等待交易确认
  */
 export async function waitForTransaction(
-  publicClient: any,
+  publicClient: ReturnType<typeof usePublicClient>,
   hash: `0x${string}`
 ) {
   try {
-    const receipt = await publicClient.waitForTransactionReceipt({
+    const receipt = await publicClient!.waitForTransactionReceipt({
       hash
     });
     return receipt;

@@ -1,0 +1,12 @@
+{
+  "name": "contracts",
+  "version": "1.0.0",
+  "scripts": {
+    "deploy": "hardhat run scripts/deploy.js",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.28.0"
+  }
+}
