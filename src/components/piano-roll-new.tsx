@@ -103,11 +103,8 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   const audioEngine = useAudioEngine();
   const gridRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
-  const playInterval = useRef<number | null>(null);
-  const animationFrame = useRef<number | null>(null);
+  const playInterval = useRef<NodeJS.Timeout | null>(null);
   const pendingTimeouts = useRef<number[]>([]);
-  const playbackStartTime = useRef<number>(0);
-  const playbackStartPosition = useRef<number>(0);
 
   const currentInstruments = INSTRUMENT_PRESETS[trackType] || INSTRUMENT_PRESETS.Synth;
 
@@ -259,12 +256,8 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     if (isPlaying) {
       setIsPlaying(false);
       if (playInterval.current) {
-        cancelAnimationFrame(playInterval.current);
+        clearInterval(playInterval.current);
         playInterval.current = null;
-      }
-      if (animationFrame.current) {
-        cancelAnimationFrame(animationFrame.current);
-        animationFrame.current = null;
       }
       pendingTimeouts.current.forEach(id => clearTimeout(id));
       pendingTimeouts.current = [];
@@ -272,52 +265,33 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     }
 
     setIsPlaying(true);
-    playbackStartTime.current = performance.now();
-    playbackStartPosition.current = currentPosition;
+    let position = currentPosition;
 
-    // 调度所有音符的播放（只调度当前位置之后或正好在当前位置的音符）
-    if (notes.length > 0) {
-      notes.forEach((note) => {
-        if (note.startTime >= currentPosition) {
-          const delay = (note.startTime - currentPosition) * (60 / BPM) / SIXTEENTH_NOTES_PER_BEAT;
-          const timeoutId = window.setTimeout(() => {
-            if (isPlaying) {
-              playNoteSound(note);
-            }
-          }, delay * 1000);
-          pendingTimeouts.current.push(timeoutId);
-        }
-      });
-    }
+    notes.forEach((note) => {
+      if (note.startTime >= position && note.startTime < position + TOTAL_SIXTEENTH_NOTES) {
+        const delay = (note.startTime - position) * (60 / BPM) / SIXTEENTH_NOTES_PER_BEAT;
+        const timeoutId = window.setTimeout(() => {
+          if (isPlaying) {
+            playNoteSound(note);
+          }
+        }, delay * 1000);
+        pendingTimeouts.current.push(timeoutId);
+      }
+    });
 
-    // 使用 requestAnimationFrame 平滑更新播放头
-    const animate = () => {
-      if (!isPlaying) return;
-
-      const elapsedTime = (performance.now() - playbackStartTime.current) / 1000; // 秒
-      const elapsedTimeInSixteenthNotes = elapsedTime / ((60 / BPM) / SIXTEENTH_NOTES_PER_BEAT);
-      const newPosition = playbackStartPosition.current + elapsedTimeInSixteenthNotes;
-
-      // 检查是否播放结束
-      const maxNoteTime = notes.length > 0 ? Math.max(...notes.map(n => n.startTime + n.duration)) : TOTAL_SIXTEENTH_NOTES;
-      if (newPosition > maxNoteTime + 4) {
+    playInterval.current = setInterval(() => {
+      position += 1;
+      if (position >= TOTAL_SIXTEENTH_NOTES) {
         setIsPlaying(false);
         setCurrentPosition(0);
         if (playInterval.current) {
-          cancelAnimationFrame(playInterval.current);
+          clearInterval(playInterval.current);
           playInterval.current = null;
         }
-        if (animationFrame.current) {
-          cancelAnimationFrame(animationFrame.current);
-          animationFrame.current = null;
-        }
       } else {
-        setCurrentPosition(newPosition);
-        animationFrame.current = requestAnimationFrame(animate);
+        setCurrentPosition(position);
       }
-    };
-
-    animationFrame.current = requestAnimationFrame(animate);
+    }, (60 / BPM) / SIXTEENTH_NOTES_PER_BEAT * 1000);
   };
 
   // 点击钢琴键播放音符
@@ -435,11 +409,11 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
 
   const updateTimelinePosition = (e: MouseEvent<HTMLDivElement>) => {
     if (!timelineRef.current) return;
-
+    
     const rect = timelineRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const width = rect.width;
-
+    const x = e.clientX - rect.left - 64; // 减去钢琴键宽度
+    const width = rect.width - 64;
+    
     const newPosition = Math.floor((x / width) * TOTAL_SIXTEENTH_NOTES);
     setCurrentPosition(Math.max(0, Math.min(TOTAL_SIXTEENTH_NOTES - 1, newPosition)));
   };
@@ -499,14 +473,13 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     });
   };
 
-  const handleMouseMove = (e: Event) => {
-    const mouseEvent = e as unknown as MouseEvent;
+  const handleMouseMove = (e: globalThis.MouseEvent) => {
     if (!gridRef.current) return;
 
     if (isDragging && draggedNote && draggedNote.startNote) {
       const rect = gridRef.current.getBoundingClientRect();
-      const deltaX = mouseEvent.clientX - draggedNote.startX;
-      const deltaY = mouseEvent.clientY - draggedNote.startY;
+      const deltaX = e.clientX - draggedNote.startX;
+      const deltaY = e.clientY - draggedNote.startY;
 
       const cellWidth = rect.width / TOTAL_SIXTEENTH_NOTES;
       const cellHeight = rect.height / (PIANO_NOTES.length * OCTAVES.length);
@@ -540,14 +513,14 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
 
       setDraggedNote({
         ...draggedNote,
-        startX: mouseEvent.clientX,
-        startY: mouseEvent.clientY
+        startX: e.clientX,
+        startY: e.clientY
       });
     }
 
     if (isResizing && resizeNote) {
       const rect = gridRef.current.getBoundingClientRect();
-      const deltaX = mouseEvent.clientX - resizeNote.startX;
+      const deltaX = e.clientX - resizeNote.startX;
       const cellWidth = rect.width / TOTAL_SIXTEENTH_NOTES;
 
       const deltaSixteenthNotes = Math.round(deltaX / cellWidth);
@@ -565,7 +538,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
 
       setResizeNote({
         note: { ...resizeNote.note, duration: newDuration },
-        startX: mouseEvent.clientX
+        startX: e.clientX
       });
     }
   };
@@ -595,14 +568,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   useEffect(() => {
     return () => {
       pendingTimeouts.current.forEach(id => clearTimeout(id));
-      if (playInterval.current) {
-        cancelAnimationFrame(playInterval.current);
-        playInterval.current = null;
-      }
-      if (animationFrame.current) {
-        cancelAnimationFrame(animationFrame.current);
-        animationFrame.current = null;
-      }
     };
   }, []);
 
@@ -716,7 +681,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
             {/* Right - Piano Roll Grid */}
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
               {/* Timeline Header */}
-              <div
+              <div 
                 ref={timelineRef}
                 className="h-12 bg-slate-800 border-b border-slate-600 flex items-end relative flex-shrink-0 cursor-pointer select-none"
                 onMouseDown={handleTimelineMouseDown}
@@ -724,6 +689,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                 onMouseUp={handleTimelineMouseUp}
                 onMouseLeave={handleTimelineMouseLeave}
               >
+                <div className="w-16 flex-shrink-0" />
                 <div className="flex-1 h-full relative">
                   {/* 时间线网格 - 使用flex布局确保精确对齐 */}
                   <div className="absolute inset-0 flex">
@@ -1075,7 +1041,7 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
               Instrument
             </label>
             <div className="space-y-2 bg-slate-800 rounded-lg p-3 border border-slate-600 max-h-48 overflow-y-auto">
-              {instruments.map((instrument) => (
+              {Object.values(allInstruments).flat().map((instrument) => (
                 <button
                   key={instrument.id}
                   onClick={() => setEditedNote({ ...editedNote, instrumentType: instrument.id })}
