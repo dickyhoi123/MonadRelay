@@ -324,7 +324,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     if (!selectedInstrument || !gridRef.current) return;
 
     const rect = gridRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - 48; // 减去钢琴键宽度
+    const x = e.clientX - rect.left - 64; // 减去钢琴键宽度
     const y = e.clientY - rect.top;
 
     const cellWidth = rect.width / TOTAL_SIXTEENTH_NOTES;
@@ -584,7 +584,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             {/* Timeline Header */}
             <div className="h-8 bg-slate-800 border-b border-slate-700 flex items-end relative flex-shrink-0">
-              <div className="w-12 flex-shrink-0" />
+              <div className="w-16 flex-shrink-0" />
               <div className="flex-1 h-full relative">
                 {/* 时间线网格 */}
                 <div className="absolute inset-0 flex">
@@ -625,33 +625,53 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
             {/* Piano Keys + Note Grid */}
             <div className="flex-1 flex overflow-hidden relative">
               {/* Piano Keys */}
-              <div className="w-12 bg-slate-800 border-r border-slate-700 overflow-hidden flex flex-col flex-shrink-0">
-                {OCTAVES.reverse().map((octave) => (
-                  <div key={octave} className="relative flex-1">
-                    {WHITE_NOTES.map((note) => {
-                      const noteIndex = PIANO_NOTES.indexOf(note);
-                      const prevNote = noteIndex > 0 ? PIANO_NOTES[noteIndex - 1] : null;
-                      const hasBlackKeyAfter = prevNote && BLACK_NOTES.includes(prevNote);
-                      return (
-                        <button
-                          key={note}
-                          onClick={() => handlePianoKeyClick(note, octave)}
-                          className="w-full h-full bg-white hover:bg-slate-100 active:bg-slate-200 border-b border-slate-300 relative"
-                        >
-                          {hasBlackKeyAfter && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePianoKeyClick(prevNote!, octave);
-                              }}
-                              className="absolute right-0 top-0 w-2/3 h-3/5 bg-slate-950 hover:bg-slate-800 active:bg-slate-700 rounded-b-md z-10 border border-slate-800"
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
+              <div className="w-16 bg-slate-800 border-r border-slate-700 overflow-hidden flex-shrink-0">
+                <div className="relative h-full">
+                  {/* 从最低音(C3)到最高音(B5)依次排列 */}
+                  {OCTAVES.map((octave) => (
+                    PIANO_NOTES.map((note, noteIndex) => {
+                      const isBlackKey = BLACK_NOTES.includes(note);
+                      const totalNotes = OCTAVES.length * 12;
+                      const notePosition = (octave - OCTAVES[0]) * 12 + noteIndex;
+                      const reversedPosition = totalNotes - 1 - notePosition;
+                      const topPercent = (reversedPosition / totalNotes) * 100;
+                      const heightPercent = (1 / totalNotes) * 100;
+
+                      if (isBlackKey) {
+                        // 黑键
+                        return (
+                          <div
+                            key={`${octave}-${note}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePianoKeyClick(note, octave);
+                            }}
+                            className="absolute bg-slate-950 hover:bg-slate-800 active:bg-slate-700 border-x border-slate-800 cursor-pointer"
+                            style={{
+                              left: '40%',
+                              width: '40%',
+                              top: `${topPercent}%`,
+                              height: `${heightPercent}%`
+                            }}
+                          />
+                        );
+                      } else {
+                        // 白键
+                        return (
+                          <button
+                            key={`${octave}-${note}`}
+                            onClick={() => handlePianoKeyClick(note, octave)}
+                            className="absolute w-full bg-white hover:bg-slate-100 active:bg-slate-200 border-b border-slate-300"
+                            style={{
+                              top: `${topPercent}%`,
+                              height: `${heightPercent}%`
+                            }}
+                          />
+                        );
+                      }
+                    })
+                  ))}
+                </div>
               </div>
 
               {/* Note Grid */}
