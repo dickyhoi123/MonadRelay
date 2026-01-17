@@ -44,6 +44,7 @@ interface Session {
   createdAt: number;
   editingTrackType?: TrackType; // 当前正在编辑的轨道类型（未保存）
   tracks?: Track[]; // 所有音轨数据
+  trackIds?: bigint[]; // 从合约获取的trackIds
   maxTracks?: number; // 最大轨道数
   masterTokenId?: number; // Master NFT Token ID
 }
@@ -471,10 +472,47 @@ function HomePage() {
       const updatedSession = loadedSessions.find(s => s.id === editingSession.id);
 
       if (updatedSession) {
+        // 合并tracks：更新当前track，保留其他track
+        const existingTracks = editingSession.tracks || [];
+        const currentTrackType = editingSession.currentTrackType;
+
+        // 找到当前track类型的索引
+        const currentTrackIndex = existingTracks.findIndex(t => t.type === currentTrackType);
+
+        let mergedTracks: Track[];
+        if (currentTrackIndex >= 0) {
+          // 更新现有track
+          mergedTracks = existingTracks.map((t: Track, idx: number) =>
+            idx === currentTrackIndex ? (data.tracks.find((dt: Track) => dt.type === currentTrackType) || t) : t
+          );
+        } else {
+          // 添加新track
+          mergedTracks = [...existingTracks, ...data.tracks];
+        }
+
+        // 确保所有4个track都存在
+        const trackTypes: TrackType[] = ['Drum', 'Bass', 'Synth', 'Vocal'];
+        const ensuredTracks = trackTypes.map(trackType => {
+          const existing = mergedTracks.find(t => t.type === trackType);
+          if (existing) return existing;
+
+          // 如果不存在，创建空track
+          return {
+            id: `${Date.now()}-${trackType}`,
+            type: trackType,
+            name: `${trackType} Track`,
+            color: trackType === 'Drum' ? '#3b82f6' : trackType === 'Bass' ? '#22c55e' : trackType === 'Synth' ? '#a855f7' : '#ec4899',
+            clips: [],
+            volume: 80,
+            isMuted: false,
+            isSolo: false
+          };
+        });
+
         // 更新前端状态
         setSessions(prevSessions => prevSessions.map(s => s.id === editingSession.id ? {
           ...updatedSession,
-          tracks: data.tracks,
+          tracks: ensuredTracks,
           editingTrackType: undefined
         } : s));
       }
@@ -559,44 +597,127 @@ function HomePage() {
     try {
       setLoadingStates(prev => ({ ...prev, [`mint-master-${session.id}`]: true }));
 
-      // 从Session的tracks中获取所有音轨的编码数据
+      // 检查Session是否有tracks数据
       if (!session.tracks || session.tracks.length === 0) {
-        throw new Error('No track data available');
+        throw new Error('No track data available. Please complete all tracks first.');
       }
 
-      // 收集所有音轨的编码数据
-      const encodedTracks = session.tracks.map(track => {
-        // 将track的clips编码为字符串
-        return JSON.stringify({
-          type: track.type,
-          clips: track.clips
+      console.log('[Mint Master NFT] Session tracks:', session.tracks);
+      console.log('[Mint Master NFT] Session trackIds:', session.trackIds);
+      console.log('[Mint Master NFT] Session progress:', session.progress, '/', session.totalTracks);
+
+      // 检查Session是否有tracks数据
+      if (!session.tracks || session.tracks.length === 0) {
+        throw new Error('No track data available. Please complete all tracks first.');
+      }
+
+      // 动态导入编码函数
+      const { noteToMidiNumber } = await import('@/lib/music-encoder');
+
+      const bpm = session.bpm || 120;
+      const totalSixteenthNotes = session.tracks.reduce((max, track) =>
+        Math.max(max, ...track.clips.map(c => c.startTime + c.duration)), 0
+      );
+
+      // 为每个track单独编码（合约期望bytes[]数组）
+      const trackTypeOrder: TrackType[] = ['Drum', 'Bass', 'Synth', 'Vocal'];
+      const encodedTrackArray: string[] = [];
+
+      trackTypeOrder.forEach(trackType => {
+        const track = session.tracks?.find(t => t.type === trackType);
+        if (!track) return;
+
+        const notes: any[] = [];
+
+        // 收集该track的所有音符
+        track.clips.forEach(clip => {
+          if (clip.pianoNotes && clip.pianoNotes.length > 0) {
+            clip.pianoNotes.forEach(pianoNote => {
+              notes.push({
+                note: noteToMidiNumber(pianoNote.note, pianoNote.octave),
+                startTime: pianoNote.startTime,
+                duration: pianoNote.duration,
+                velocity: pianoNote.velocity,
+                instrumentId: pianoNote.instrumentType || `${track.type}-default`
+              });
+            });
+          }
         });
+
+        // 编码单个track为JSON字符串
+        if (notes.length > 0) {
+          const singleTrackData: any = {};
+          singleTrackData[trackType] = notes;
+          encodedTrackArray.push(JSON.stringify(singleTrackData));
+        } else {
+          // 如果没有音符，创建空track
+          const emptyTrack: any = {};
+          emptyTrack[trackType] = [];
+          encodedTrackArray.push(JSON.stringify(emptyTrack));
+        }
       });
 
-      // 获取最大的总音符数
-      const totalSixteenthNotes = Math.max(...session.tracks.map(t => t.clips.reduce((max, clip) => Math.max(max, clip.startTime + clip.duration), 0)));
+      console.log('[Mint Master NFT] Encoded track array length:', encodedTrackArray.length);
+      console.log('[Mint Master NFT] Encoded tracks preview:', encodedTrackArray);
+
+      // 检查是否有有效的音符数据
+      const hasNotes = encodedTrackArray.some(encodedTrack => {
+        const trackData = JSON.parse(encodedTrack);
+        const notes = Object.values(trackData)[0] as any[];
+        return notes && notes.length > 0;
+      });
+
+      if (!hasNotes) {
+        throw new Error('No notes found in any track. Please add notes using Piano Roll before minting.');
+      }
 
       // 调用铸造Master NFT
       const hash = await mintMaster(
         session.id,
         session.contributors,
-        // 使用虚拟的trackIds（实际应该从合约获取）
-        Array.from({ length: session.contributors.length }, (_, i) => i + 1),
-        session.bpm,
+        // 使用session.trackIds（从合约获取的真实trackIds）
+        (session.trackIds || []).map((id: bigint) => Number(id)),
+        bpm,
         totalSixteenthNotes,
-        encodedTracks
+        encodedTrackArray // 传入每个track的编码数据数组
       );
 
-      showToast('success', 'Master NFT minted successfully!');
+      console.log('[Mint Master NFT] Transaction hash:', hash);
+      showToast('success', 'Master NFT minted successfully! Waiting for confirmation...');
 
-      // 更新Session的masterTokenId
-      setSessions(prevSessions =>
-        prevSessions.map(s =>
-          s.id === session.id ? { ...s, masterTokenId: session.contributors.indexOf(address) + 1 } : s
-        )
-      );
+      // 等待交易确认并获取Token ID
+      if (publicClient) {
+        const receipt = await waitForTransaction(publicClient, hash);
+        console.log('[Mint Master NFT] Transaction confirmed:', receipt);
+
+        // 从Transfer事件获取Token ID
+        let tokenId = 0;
+        if (receipt.logs && receipt.logs.length > 0) {
+          const transferLog = receipt.logs.find((log: any) =>
+            log.topics && log.topics.length === 4 && log.topics[0]?.toLowerCase().includes('transfer')
+          );
+
+          if (transferLog && transferLog.topics[3]) {
+            tokenId = Number(BigInt(transferLog.topics[3]));
+            console.log('[Mint Master NFT] Master Token ID:', tokenId);
+          }
+        }
+
+        // 更新Session的masterTokenId
+        setSessions(prevSessions =>
+          prevSessions.map(s =>
+            s.id === session.id ? { ...s, masterTokenId: tokenId || session.contributors.indexOf(address) + 1 } : s
+          )
+        );
+
+        if (tokenId > 0) {
+          showToast('success', `Master NFT minted successfully! Token ID: ${tokenId}. You can decode it in the NFT Decoder page.`);
+        } else {
+          showToast('success', 'Master NFT minted successfully!');
+        }
+      }
     } catch (error) {
-      console.error('Failed to mint master NFT:', error);
+      console.error('[Mint Master NFT] Failed to mint:', error);
       showToast('error', `Failed to mint master NFT: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoadingStates(prev => ({ ...prev, [`mint-master-${session.id}`]: false }));

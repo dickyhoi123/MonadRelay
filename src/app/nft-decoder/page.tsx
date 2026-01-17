@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Play, Pause, Music, Code, Download, Upload, Loader2, ArrowLeft } from 'lucide-react';
 import { useAccount, usePublicClient } from 'wagmi';
-import { useGetTrackMusicData, useGetMasterInfo } from '@/lib/contract-hooks';
+import { useGetTrackMusicData, useGetMasterInfo, useGetMasterMusicData } from '@/lib/contract-hooks';
 import { decodeJSONToTracks, encodedNoteToPianoNote, validateEncodedData } from '@/lib/music-encoder';
 import { useAudioEngine } from '@/lib/audio-engine';
 import { INSTRUMENT_PRESETS } from '@/components/piano-roll-new';
@@ -30,6 +30,7 @@ export default function NFTDecoder() {
   const publicClient = usePublicClient();
   const { getMusicData } = useGetTrackMusicData();
   const { getMasterInfo } = useGetMasterInfo();
+  const { getMasterMusicData } = useGetMasterMusicData();
   const audioEngine = useAudioEngine();
 
   const [mounted, setMounted] = useState(false);
@@ -73,44 +74,107 @@ export default function NFTDecoder() {
     try {
       const tokenIdNum = parseInt(tokenId);
 
-      // 从合约读取真实数据
+      // 先尝试从Master NFT读取
       try {
-        const musicData = await getMusicData(tokenIdNum);
+        const masterData = await getMasterMusicData(tokenIdNum);
+        console.log('[NFT Decoder] Master NFT data:', masterData);
 
-        if (!musicData || !musicData.encodedTracks) {
-          throw new Error('No music data found in this NFT. Please check the Token ID and try again.');
+        if (!masterData || !masterData.encodedTracks || masterData.encodedTracks.length === 0) {
+          throw new Error('No music data found in this Master NFT');
         }
 
+        // 合并所有track的编码数据
+        const mergedTracks: any = {};
+        masterData.encodedTracks.forEach((encodedTrack, index) => {
+          console.log(`[NFT Decoder] Track ${index + 1} encoded data:`, encodedTrack);
+          const trackData = JSON.parse(encodedTrack);
+
+          // 将每个track的数据合并到mergedTracks
+          Object.entries(trackData).forEach(([trackType, notes]) => {
+            if (notes && (notes as any[]).length > 0) {
+              mergedTracks[trackType] = notes;
+            }
+          });
+        });
+
+        console.log('[NFT Decoder] Merged tracks:', mergedTracks);
+
+        // 将合并后的数据转换为JSON字符串进行验证
+        const mergedEncodedTracks = JSON.stringify(mergedTracks);
+
         // 验证数据有效性
-        if (!validateEncodedData(musicData.encodedTracks)) {
-          throw new Error('Invalid encoded music data. The NFT may be corrupted.');
+        if (!validateEncodedData(mergedEncodedTracks)) {
+          throw new Error('Invalid encoded music data. The Master NFT may be corrupted.');
         }
 
         // 解码 JSON 数据
-        const decoded = decodeJSONToTracks(musicData.encodedTracks);
+        const decoded = {
+          tracks: mergedTracks,
+          bpm: masterData.bpm,
+          totalSixteenthNotes: masterData.totalSixteenthNotes
+        };
 
-        if (!decoded) {
-          throw new Error('Failed to decode music data. Please check the NFT format.');
+        if (!decoded || !decoded.tracks) {
+          throw new Error('Failed to decode Master NFT data');
         }
 
         // 转换为前端格式
-        const tracks: DecodedTrack[] = Object.entries(decoded.tracks).map(([trackType, notes]) => ({
+        const tracks: DecodedTrack[] = Object.entries(decoded.tracks).map(([trackType, notes]: [string, any]) => ({
           type: trackType,
           notes: notes.map(encodedNoteToPianoNote)
         }));
 
         setDecodedData({
-          bpm: musicData.bpm,
-          totalSixteenthNotes: musicData.totalSixteenthNotes,
+          bpm: decoded.bpm,
+          totalSixteenthNotes: decoded.totalSixteenthNotes,
           tracks
         });
 
-        showToast('success', `Successfully decoded NFT from contract (Token ID: ${tokenIdNum})`);
+        showToast('success', `Successfully decoded Master NFT from contract (Token ID: ${tokenIdNum})`);
         setLoading(false);
         return;
-      } catch (contractError: any) {
-        console.error('Contract read failed:', contractError);
-        throw new Error(`Failed to decode NFT from contract: ${contractError.message}. Please ensure you are connected to the correct network and the NFT exists.`);
+      } catch (masterError: any) {
+        console.log('[NFT Decoder] Master NFT read failed, trying Track NFT:', masterError.message);
+
+        // 如果Master NFT读取失败，尝试从Track NFT读取
+        try {
+          const musicData = await getMusicData(tokenIdNum);
+
+          if (!musicData || !musicData.encodedTracks) {
+            throw new Error('No music data found in this Track NFT. Please check the Token ID and try again.');
+          }
+
+          // 验证数据有效性
+          if (!validateEncodedData(musicData.encodedTracks)) {
+            throw new Error('Invalid encoded music data. The Track NFT may be corrupted.');
+          }
+
+          // 解码 JSON 数据
+          const decoded = decodeJSONToTracks(musicData.encodedTracks);
+
+          if (!decoded) {
+            throw new Error('Failed to decode Track NFT data. Please check the NFT format.');
+          }
+
+          // 转换为前端格式
+          const tracks: DecodedTrack[] = Object.entries(decoded.tracks).map(([trackType, notes]) => ({
+            type: trackType,
+            notes: notes.map(encodedNoteToPianoNote)
+          }));
+
+          setDecodedData({
+            bpm: musicData.bpm,
+            totalSixteenthNotes: musicData.totalSixteenthNotes,
+            tracks
+          });
+
+          showToast('success', `Successfully decoded Track NFT from contract (Token ID: ${tokenIdNum})`);
+          setLoading(false);
+          return;
+        } catch (trackError: any) {
+          console.error('[NFT Decoder] Both Master and Track NFT read failed:', trackError);
+          throw new Error(`Failed to decode NFT: Neither Master nor Track NFT found. Please check the Token ID and try again.`);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to decode NFT');
