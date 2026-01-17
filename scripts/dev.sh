@@ -2,11 +2,14 @@
 set -Eeuo pipefail
 
 PORT=5000
-COZE_WORKSPACE_PATH="${COZE_WORKSPACE_PATH:-$(pwd)}"
 NODE_ENV=development
 DEPLOY_RUN_PORT=5000
 
-cd "${COZE_WORKSPACE_PATH}"
+# 使用脚本所在目录作为项目根目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "${PROJECT_ROOT}"
 
 kill_port_if_listening() {
     local pids
