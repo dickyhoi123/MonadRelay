@@ -51,6 +51,7 @@ interface MusicEditorProps {
   initialTracks?: Track[]; // 初始音轨数据（从Session传入）
   onSave?: (data: any) => void;
   onCancel?: () => void;
+  readonly?: boolean; // 只读模式（用于查看已完成的项目）
 }
 
 const TRACK_COLORS: Record<TrackType, string> = {
@@ -64,7 +65,7 @@ const TOTAL_BARS = 16;
 const BEATS_PER_BAR = 4;
 const TOTAL_BEATS = TOTAL_BARS * BEATS_PER_BAR;
 
-export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, onSave, onCancel }: MusicEditorProps) {
+export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, onSave, onCancel, readonly = false }: MusicEditorProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(0);
   const [tracks, setTracks] = useState<Track[]>(() => {
@@ -541,6 +542,9 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
   // 拖拽音频片段
   const handleClipMouseDown = (e: React.MouseEvent, trackId: TrackId, clipId: string) => {
     e.stopPropagation();
+    // 只读模式下禁用拖拽
+    if (readonly) return;
+
     const track = tracks.find(t => t.id === trackId);
     const clip = track?.clips.find(c => c.id === clipId);
     if (!track || !clip) return;
@@ -728,7 +732,10 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
             <div className="flex items-center gap-6">
               <div>
                 <h1 className="text-2xl font-bold text-white">{sessionName}</h1>
-                <p className="text-sm text-slate-400">Session #{sessionId} • Creating {trackType} Track</p>
+                <p className="text-sm text-slate-400">
+                  Session #{sessionId}
+                  {readonly ? ' • View Only' : ` • Creating ${trackType} Track`}
+                </p>
               </div>
 
               {/* 播放控制 */}
@@ -762,65 +769,80 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
               </div>
 
               {/* 钢琴帘切换按钮 - 显眼位置 */}
-              <Button
-                onClick={() => handleOpenPianoRoll(tracks.find(t => t.type === trackType)?.id || '')}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg"
-              >
-                <Piano className="h-5 w-5 mr-2" />
-                Open Piano Roll
-              </Button>
+              {!readonly && (
+                <Button
+                  onClick={() => handleOpenPianoRoll(tracks.find(t => t.type === trackType)?.id || '')}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg"
+                >
+                  <Piano className="h-5 w-5 mr-2" />
+                  Open Piano Roll
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="audio/*"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="audio-upload"
-              />
-              <Button
-                variant="outline"
-                onClick={onCancel}
-                className="border-slate-600 text-slate-400"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveDraft}
-                disabled={isSaving}
-                className="bg-slate-600 hover:bg-slate-700"
-              >
-                {isSaving ? (
-                  <>
-                    <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Draft
-                  </>
-                )}
-              </Button>
-              <Button
-                onClick={handleUploadTrack}
-                disabled={totalClips === 0 || isSaving}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-              >
-                {isSaving ? (
-                  <>
-                    <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Track
-                  </>
-                )}
-              </Button>
+              {!readonly && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="audio-upload"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={onCancel}
+                    className="border-slate-600 text-slate-400"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveDraft}
+                    disabled={isSaving}
+                    className="bg-slate-600 hover:bg-slate-700"
+                  >
+                    {isSaving ? (
+                      <>
+                        <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Draft
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleUploadTrack}
+                    disabled={totalClips === 0 || isSaving}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                  >
+                    {isSaving ? (
+                      <>
+                        <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Track
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+              {readonly && onCancel && (
+                <Button
+                  variant="outline"
+                  onClick={onCancel}
+                  className="border-slate-600 text-slate-400"
+                >
+                  Close
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -893,8 +915,16 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
                 <div
                   key={track.id}
                   onClick={() => {
-                    // 如果有clip，打开第一个clip的只读视图
-                    if (track.clips.length > 0) {
+                    if (!track.clips.length) return;
+
+                    if (readonly) {
+                      // 只读模式：打开只读钢琴帘
+                      handleOpenReadonlyPianoRoll(track.id, track.clips[0].id);
+                    } else if (track.type === trackType) {
+                      // 非只读模式且track类型匹配：打开可编辑钢琴帘
+                      handleOpenPianoRoll(track.id, track.clips[0].id);
+                    } else {
+                      // 其他情况：打开只读钢琴帘
                       handleOpenReadonlyPianoRoll(track.id, track.clips[0].id);
                     }
                   }}
@@ -1003,9 +1033,13 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
                     )}
                   </div>
 
-                  {/* 查看提示 */}
-                  <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Eye className="h-4 w-4 text-slate-400" />
+                  {/* 编辑/查看按钮 */}
+                  <div className="absolute bottom-2 right-2">
+                    {readonly ? (
+                      <Eye className="h-4 w-4 text-slate-400" />
+                    ) : (
+                      <Edit3 className="h-4 w-4 text-slate-400" />
+                    )}
                   </div>
                 </div>
               ))}

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
-import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X, ArrowLeft } from 'lucide-react';
+import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X, ArrowLeft, Eye } from 'lucide-react';
 import { useWallet } from '@/contexts/wallet-context';
 import { WalletButton } from '@/components/wallet-button';
 import { MusicEditor } from '@/components/music-editor';
@@ -114,6 +114,7 @@ function HomePage() {
   });
   const [loadingStates, setLoadingStates] = useState<{ [key: number]: boolean }>({});
   const [selectedSessionForChat, setSelectedSessionForChat] = useState<Session | null>(null);
+  const [readonlySession, setReadonlySession] = useState<Session | null>(null);
 
   const formatAddress = (addr: string) => {
     // 从 0x 后面开始显示，只显示2位
@@ -539,14 +540,21 @@ function HomePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {sessions.filter(s => !s.isFinalized && s.contributors.includes(address)).map((session) => (
-                <Card key={session.id} className="bg-slate-900/50 border-slate-800 hover:border-purple-500 transition-all duration-300">
+                {sessions.filter(s => s.contributors.includes(address)).map((session) => (
+                <Card key={session.id} className={`bg-slate-900/50 border-slate-800 hover:border-purple-500 transition-all duration-300 ${session.isFinalized ? 'opacity-75' : ''}`}>
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">
-                      <CardTitle className="text-white text-xl">{session.name}</CardTitle>
-                      <Badge variant="outline" className="border-purple-500 text-purple-400">
-                        {session.genre}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-white text-xl">{session.name}</CardTitle>
+                        {session.isFinalized && (
+                          <Badge className="bg-purple-600">✓ Completed</Badge>
+                        )}
+                      </div>
+                      {!session.isFinalized && (
+                        <Badge variant="outline" className="border-purple-500 text-purple-400">
+                          {session.genre}
+                        </Badge>
+                      )}
                     </div>
                     <CardDescription className="text-slate-400">
                       {session.description}
@@ -626,23 +634,47 @@ function HomePage() {
 
                     {/* Action Buttons */}
                     <div className="flex gap-2">
-                      <Button
-                        onClick={() => handleJoinSession(session.id)}
-                        disabled={!isConnected || loadingStates[session.id] || session.isFinalized || session.progress >= session.totalTracks}
-                        className="flex-1 bg-purple-600 hover:bg-purple-700"
-                      >
-                        {loadingStates[session.id] ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Joining...
-                          </>
-                        ) : (
-                          <>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit {session.editingTrackType || session.currentTrackType}
-                          </>
-                        )}
-                      </Button>
+                      {session.isFinalized ? (
+                        // 已完成的session：显示Listen按钮（只读模式）
+                        <Button
+                          onClick={() => setReadonlySession(session)}
+                          disabled={!isConnected}
+                          className="flex-1 bg-purple-600 hover:bg-purple-700"
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Listen
+                        </Button>
+                      ) : session.progress >= session.totalTracks ? (
+                        // 已满但未完成：显示View按钮（只读模式）
+                        <Button
+                          onClick={() => setReadonlySession(session)}
+                          disabled={!isConnected}
+                          variant="outline"
+                          className="flex-1 border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View
+                        </Button>
+                      ) : (
+                        // 未完成且未满：显示Edit按钮
+                        <Button
+                          onClick={() => handleJoinSession(session.id)}
+                          disabled={!isConnected || loadingStates[session.id]}
+                          className="flex-1 bg-purple-600 hover:bg-purple-700"
+                        >
+                          {loadingStates[session.id] ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Joining...
+                            </>
+                          ) : (
+                            <>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit {session.editingTrackType || session.currentTrackType}
+                            </>
+                          )}
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         onClick={() => setSelectedSessionForChat(session)}
@@ -685,7 +717,12 @@ function HomePage() {
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" className="flex-1 border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white">
+                      <Button
+                        variant="outline"
+                        onClick={() => setReadonlySession(session)}
+                        disabled={!isConnected}
+                        className="flex-1 border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+                      >
                         <Music className="h-4 w-4 mr-2" />
                         Listen
                       </Button>
@@ -743,6 +780,29 @@ function HomePage() {
               initialTracks={editingSession.tracks}
               onSave={handleEditorSave}
               onCancel={handleEditorCancel}
+            />
+          </div>
+        )}
+
+        {/* Music Editor - Readonly Mode */}
+        {readonlySession && (
+          <div className="fixed inset-0 z-50 bg-slate-950 overflow-auto">
+            {/* 顶部导航栏 */}
+            <div className="fixed top-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
+              <button
+                onClick={() => setReadonlySession(null)}
+                className="flex items-center gap-2 px-6 py-3 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-all"
+              >
+                <ArrowLeft className="h-5 w-5" />
+                <span className="text-sm font-medium">Back to Sessions</span>
+              </button>
+            </div>
+            <MusicEditor
+              sessionId={readonlySession.id}
+              sessionName={readonlySession.name}
+              trackType={readonlySession.currentTrackType}
+              initialTracks={readonlySession.tracks}
+              readonly={true}
             />
           </div>
         )}
