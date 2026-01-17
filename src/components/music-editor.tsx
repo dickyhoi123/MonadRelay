@@ -341,24 +341,17 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
 
   // 打开钢琴帘
   const handleOpenPianoRoll = (trackId: TrackId, clipId?: string) => {
-    console.log('Opening Piano Roll for track:', trackId, 'clip:', clipId);
     const track = tracks.find(t => t.id === trackId);
-    if (!track) {
-      console.error('Track not found:', trackId);
-      return;
-    }
+    if (!track) return;
 
     setSelectedTrackForPiano(track);
     if (clipId) {
       const clip = track.clips.find(c => c.id === clipId);
       setSelectedClipForPiano(clip || null);
-      console.log('Opening with clip:', clip);
     } else {
       setSelectedClipForPiano(null);
-      console.log('Opening without clip');
     }
     setPianoRollOpen(true);
-    console.log('Piano Roll opened:', true);
   };
 
   // 保存钢琴音符
@@ -560,7 +553,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
               <div key={track.id} className="relative bg-slate-900/80 rounded-xl border-2 border-slate-800 overflow-hidden">
                 <div className="absolute inset-0 flex">
                   {/* 轨道头部 */}
-                  <div className="w-56 flex-shrink-0 bg-slate-800/90 backdrop-blur-sm border-r border-slate-700 p-4 flex flex-col justify-between">
+                  <div className="w-64 flex-shrink-0 bg-slate-800/90 backdrop-blur-sm border-r border-slate-700 p-4 flex flex-col justify-between min-w-64">
                     <div>
                       <div className="flex items-center gap-2 mb-3">
                         <div className={`w-4 h-4 rounded-full shadow-lg`} style={{ backgroundColor: track.color }} />
@@ -607,7 +600,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                   </div>
 
                   {/* 音频片段区域 */}
-                  <div className="flex-1 relative h-28 bg-slate-950">
+                  <div className="flex-1 relative h-32 bg-slate-950 min-h-32">
                     {/* 网格线 */}
                     <div className="absolute inset-0 pointer-events-none">
                       {Array.from({ length: TOTAL_BEATS + 1 }).map((_, i) => (

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import { Wallet, LogOut, Loader2 } from 'lucide-react';
@@ -18,10 +19,21 @@ export function WalletButton() {
 
   const monadChainId = 10143;
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <>
       {!isConnected ? (
         <Button
+          variant="default"
           onClick={() => connect({ connector: connectors[0] })}
           disabled={isPending}
           className="bg-purple-600 hover:bg-purple-700 transition-all"

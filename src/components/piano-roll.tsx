@@ -39,7 +39,6 @@ const TOTAL_BARS = 8;
 const BEATS_PER_BAR = 4;
 
 export function PianoRoll({ isOpen, onClose, trackId, trackName, onSave, initialNotes = [] }: PianoRollProps) {
-  console.log('PianoRoll render - isOpen:', isOpen, 'trackId:', trackId, 'trackName:', trackName);
   const [notes, setNotes] = useState<PianoNote[]>(initialNotes);
   const [selectedSynth, setSelectedSynth] = useState(SYNTH_PRESETS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
