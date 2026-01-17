@@ -1,10 +1,15 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { createConfig, http } from 'wagmi';
+import { injected, walletConnect } from 'wagmi/connectors';
 
 // 自定义 Monad Testnet 链配置
 export const monadTestnet = {
   id: 41454,
   name: 'Monad Testnet',
-  nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
+  nativeCurrency: {
+    name: 'MON',
+    symbol: 'MON',
+    decimals: 18,
+  },
   rpcUrls: {
     default: { http: ['https://testnet-rpc.monad.xyz'] },
   },
@@ -15,9 +20,13 @@ export const monadTestnet = {
 } as const;
 
 // 配置
-export const config = getDefaultConfig({
-  appName: 'Monad Music',
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo',
+export const config = createConfig({
   chains: [monadTestnet],
-  ssr: true, // Next.js 需要这个
+  connectors: [
+    injected(),
+    walletConnect({ projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo' }),
+  ],
+  transports: {
+    [monadTestnet.id]: http(),
+  },
 });
