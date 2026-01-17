@@ -66,6 +66,7 @@ function HomePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [totalSessionsOnChain, setTotalSessionsOnChain] = useState<number>(0);
+  const [loadSessionsDebug, setLoadSessionsDebug] = useState<string>('');
 
   useEffect(() => {
     setMounted(true);
@@ -78,13 +79,20 @@ function HomePage() {
       if (!publicClient || !mounted) return;
 
       try {
+        const addresses = getContractAddresses(chainId);
+        console.log('[fetchTotalSessions] Chain ID:', chainId);
+        console.log('[fetchTotalSessions] MusicSession address:', addresses.musicSession);
+        console.log('[fetchTotalSessions] Public client:', !!publicClient);
+        console.log('[fetchTotalSessions] ABI functions:', MUSIC_SESSION_ABI.map(a => a.name));
+
         const total = await publicClient.readContract({
-          address: getContractAddresses(chainId).musicSession as `0x${string}`,
+          address: addresses.musicSession as `0x${string}`,
           abi: MUSIC_SESSION_ABI,
           functionName: 'totalSessions',
           args: []
         }) as bigint;
 
+        console.log('[fetchTotalSessions] Total sessions:', total.toString());
         setTotalSessionsOnChain(Number(total));
 
         // 更新页面显示
@@ -92,11 +100,19 @@ function HomePage() {
         if (totalElement) {
           totalElement.textContent = Number(total).toString();
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('[fetchTotalSessions] Error:', error);
+        console.error('[fetchTotalSessions] Error message:', error?.message);
+        console.error('[fetchTotalSessions] Error code:', error?.code);
+        console.error('[fetchTotalSessions] Error data:', error?.data);
+
+        const addresses = getContractAddresses(chainId);
+        console.error('[fetchTotalSessions] Contract address being used:', addresses.musicSession);
+        console.error('[fetchTotalSessions] Chain ID:', chainId);
+
         const totalElement = document.getElementById('totalSessions');
         if (totalElement) {
-          totalElement.textContent = 'Error';
+          totalElement.textContent = `Error: ${error?.message || 'Unknown'}`;
         }
       }
     };
@@ -104,50 +120,113 @@ function HomePage() {
     fetchTotalSessions();
   }, [publicClient, chainId, mounted]);
 
+  // 测试单个Session的读取
+  const testSingleSession = async (sessionId: number) => {
+    if (!publicClient) return;
+
+    try {
+      console.log(`[testSingleSession] Testing session ${sessionId}...`);
+      const info = await publicClient.readContract({
+        address: getContractAddresses(chainId).musicSession as `0x${string}`,
+        abi: MUSIC_SESSION_ABI,
+        functionName: 'getSessionInfo',
+        args: [BigInt(sessionId)]
+      });
+
+      console.log(`[testSingleSession] Session ${sessionId} raw data:`, info);
+      console.log(`[testSingleSession] Session ${sessionId} fields:`, {
+        id: info[0],
+        sessionName: info[1],
+        description: info[2],
+        genre: info[3],
+        bpm: info[4],
+        maxTracks: info[5],
+        currentTrackIndex: info[6],
+        isFinalized: info[7],
+        createdAt: info[8],
+        completedAt: info[9],
+        contributors: info[10],
+        trackIds: info[11],
+        trackFilledStatus: info[12]
+      });
+
+      return info;
+    } catch (error) {
+      console.error(`[testSingleSession] Failed to test session ${sessionId}:`, error);
+      throw error;
+    }
+  };
+
   // 从合约加载 Sessions（返回加载的sessions）
   const loadSessions = async () => {
     if (!publicClient) return [];
 
     setIsLoadingSessions(true);
+    let debugInfo = '';
+
     try {
+      debugInfo += 'Starting to load sessions...\n';
       console.log('[loadSessions] Starting to load sessions...');
       console.log('[loadSessions] Chain ID:', chainId);
       console.log('[loadSessions] Public client ready:', !!publicClient);
 
+      debugInfo += `Chain ID: ${chainId}\n`;
+      debugInfo += `Public client ready: ${!!publicClient}\n`;
+
+      // 先测试单个Session（如果链上有Session）
+      try {
+        await testSingleSession(1);
+      } catch (error) {
+        debugInfo += `Warning: Could not test session 1\n`;
+      }
+
       // 传入空数组，让getMultipleSessions自己根据totalSessions查询
       const contractSessions = await getMultipleSessions(publicClient, [], chainId);
+      debugInfo += `Contract sessions returned: ${contractSessions.length}\n`;
       console.log('[loadSessions] Contract sessions returned:', contractSessions.length);
 
       // 转换为前端格式
-      const frontendSessions: Session[] = contractSessions.map(cs => ({
-        id: Number(cs.id),
-        name: cs.name,
-        description: cs.description,
-        genre: cs.genre,
-        bpm: cs.bpm,
-        progress: cs.progress,
-        totalTracks: cs.maxTracks,
-        currentTrackType: trackTypes[cs.progress] || 'Vocal',
-        isFinalized: cs.isFinalized,
-        contributors: cs.contributors,
-        createdAt: cs.createdAt,
-        tracks: [] // 可以从NFT解码获取，这里暂时为空
-      }));
+      const frontendSessions: Session[] = contractSessions.map(cs => {
+        console.log(`[loadSessions] Mapping contract session:`, cs);
+        return {
+          id: Number(cs.id),
+          name: cs.name,
+          description: cs.description,
+          genre: cs.genre,
+          bpm: cs.bpm,
+          progress: cs.progress,
+          totalTracks: cs.maxTracks,
+          currentTrackType: trackTypes[cs.progress] || 'Vocal',
+          isFinalized: cs.isFinalized,
+          contributors: cs.contributors,
+          createdAt: cs.createdAt,
+          tracks: [] // 可以从NFT解码获取，这里暂时为空
+        };
+      });
+
+      debugInfo += `Frontend sessions mapped: ${frontendSessions.length}\n`;
 
       // 详细日志：每个session的信息
       frontendSessions.forEach(s => {
         console.log(`[loadSessions] Session ${s.id}: name="${s.name}", hasName=${!!s.name}, finalized=${s.isFinalized}`);
+        debugInfo += `Session ${s.id}: name="${s.name}", hasName=${!!s.name}, id=${s.id}\n`;
       });
 
       // 只显示有名称的Session（防止显示空session）
       const validSessions = frontendSessions.filter(s => s.name && s.id > 0);
+      debugInfo += `Valid sessions with name: ${validSessions.length}\n`;
       console.log('[loadSessions] Valid sessions with name:', validSessions.length);
       console.log('[loadSessions] Final sessions list:', validSessions);
+
       setSessions(validSessions);
+      setLoadSessionsDebug(debugInfo);
       return validSessions;
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      debugInfo += `ERROR: ${errorMsg}\n`;
       console.error('[loadSessions] Failed to load sessions:', error);
       setSessions([]);
+      setLoadSessionsDebug(debugInfo);
       return [];
     } finally {
       setIsLoadingSessions(false);
@@ -429,7 +508,7 @@ function HomePage() {
         {/* Debug Info - 临时显示，用于调试 */}
         {mounted && (
           <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-6">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm mb-3">
               <div>
                 <span className="text-slate-400">Chain ID:</span>
                 <span className="text-purple-400 font-mono ml-2">{chainId}</span>
@@ -454,12 +533,44 @@ function HomePage() {
                 <span className={publicClient ? "text-green-400" : "text-red-400"}>{publicClient ? " Ready" : " Not Ready"}</span>
               </div>
             </div>
+            <div className="flex items-center gap-3 pt-3 border-t border-slate-700">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadSessions}
+                disabled={isLoadingSessions}
+                className="border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+              >
+                {isLoadingSessions ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <Code className="h-4 w-4 mr-2" />
+                    Test Contract
+                  </>
+                )}
+              </Button>
+              <span className="text-xs text-slate-500">
+                Click to test contract connection and view console for details
+              </span>
+            </div>
             {sessions.length > 0 && (
               <div className="mt-3 pt-3 border-t border-slate-700 text-sm">
                 <span className="text-slate-400">Session IDs:</span>
                 <span className="text-purple-400 font-mono ml-2">
                   [{sessions.map(s => s.id).join(', ')}]
                 </span>
+              </div>
+            )}
+            {loadSessionsDebug && (
+              <div className="mt-3 pt-3 border-t border-slate-700">
+                <div className="text-xs text-slate-400 mb-1">Load Sessions Debug:</div>
+                <pre className="text-xs font-mono text-slate-300 bg-black/50 p-2 rounded max-h-40 overflow-auto">
+                  {loadSessionsDebug}
+                </pre>
               </div>
             )}
           </div>

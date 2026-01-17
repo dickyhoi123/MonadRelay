@@ -295,9 +295,11 @@ export async function getMultipleSessions(
   const contractAddress = getContractAddresses(chainId).musicSession;
   console.log('[getMultipleSessions] MusicSession contract:', contractAddress);
 
-  // 先获取 totalSessions
+  // 先尝试获取 totalSessions
+  let totalSessions: bigint;
   try {
-    const totalSessions = await publicClient.readContract({
+    console.log('[getMultipleSessions] Attempting to read totalSessions...');
+    totalSessions = await publicClient.readContract({
       address: getContractAddresses(chainId).musicSession as `0x${string}`,
       abi: MUSIC_SESSION_ABI,
       functionName: 'totalSessions',
@@ -305,57 +307,90 @@ export async function getMultipleSessions(
     }) as bigint;
 
     console.log('[getMultipleSessions] Total sessions on chain:', totalSessions.toString());
+  } catch (error: any) {
+    console.error('[getMultipleSessions] Error reading totalSessions:', error);
+    console.error('[getMultipleSessions] Error details:', {
+      message: error?.message,
+      code: error?.code,
+      data: error?.data,
+      name: error?.name
+    });
 
-    if (totalSessions === BigInt(0)) {
-      console.log('[getMultipleSessions] No sessions found on chain');
-      return [];
+    // 如果totalSessions读取失败，尝试调用getAllSessionIds作为备选方案
+    console.log('[getMultipleSessions] Trying getAllSessionIds as fallback...');
+    try {
+      const allSessionIds = await publicClient.readContract({
+        address: getContractAddresses(chainId).musicSession as `0x${string}`,
+        abi: MUSIC_SESSION_ABI,
+        functionName: 'getAllSessionIds',
+        args: []
+      }) as bigint[];
+
+      console.log('[getMultipleSessions] getAllSessionIds returned:', allSessionIds);
+      totalSessions = BigInt(allSessionIds.length);
+    } catch (fallbackError) {
+      console.error('[getMultipleSessions] Fallback getAllSessionIds also failed:', fallbackError);
+      throw new Error(`Failed to read contract: ${error?.message || 'Unknown error'}`);
     }
-
-    // 只查询实际存在的 session ID (ID从1开始)
-    const actualSessionIds = Array.from({ length: Number(totalSessions) }, (_, i) => i + 1);
-    console.log('[getMultipleSessions] Querying session IDs:', actualSessionIds);
-
-    const sessions = await Promise.allSettled(
-      actualSessionIds.map(async (sessionId) => {
-        try {
-          const info = await publicClient.readContract({
-            address: getContractAddresses(chainId).musicSession as `0x${string}`,
-            abi: MUSIC_SESSION_ABI,
-            functionName: 'getSessionInfo',
-            args: [BigInt(sessionId)]
-          });
-          return { sessionId, info };
-        } catch (error) {
-          console.log(`[getMultipleSessions] Failed to get session ${sessionId}:`, error);
-          throw error;
-        }
-      })
-    );
-
-    console.log('[getMultipleSessions] Total requests:', sessions.length);
-    console.log('[getMultipleSessions] Successful requests:', sessions.filter(s => s.status === 'fulfilled').length);
-    console.log('[getMultipleSessions] Failed requests:', sessions.filter(s => s.status === 'rejected').length);
-
-    // 过滤成功的请求
-    return sessions
-      .filter((result): result is PromiseFulfilledResult<{ sessionId: number; info: any }> => result.status === 'fulfilled')
-      .map(result => ({
-        id: result.value.info.id,
-        name: result.value.info.sessionName,
-        description: result.value.info.description,
-        genre: result.value.info.genre,
-        bpm: Number(result.value.info.bpm),
-        maxTracks: Number(result.value.info.maxTracks),
-        progress: Number(result.value.info.currentTrackIndex),
-        isFinalized: result.value.info.isFinalized,
-        contributors: result.value.info.contributors,
-        trackIds: result.value.info.trackIds,
-        trackFilledStatus: result.value.info.trackFilledStatus,
-        createdAt: Number(result.value.info.createdAt),
-        completedAt: Number(result.value.info.completedAt)
-      }));
-  } catch (error) {
-    console.error('[getMultipleSessions] Error getting totalSessions:', error);
-    throw error;
   }
+
+  if (totalSessions === BigInt(0)) {
+    console.log('[getMultipleSessions] No sessions found on chain');
+    return [];
+  }
+
+  // 只查询实际存在的 session ID (ID从1开始)
+  const actualSessionIds = Array.from({ length: Number(totalSessions) }, (_, i) => i + 1);
+  console.log('[getMultipleSessions] Querying session IDs:', actualSessionIds);
+
+  const sessions = await Promise.allSettled(
+    actualSessionIds.map(async (sessionId) => {
+      try {
+        console.log(`[getMultipleSessions] Querying session ${sessionId}...`);
+        const info = await publicClient.readContract({
+          address: getContractAddresses(chainId).musicSession as `0x${string}`,
+          abi: MUSIC_SESSION_ABI,
+          functionName: 'getSessionInfo',
+          args: [BigInt(sessionId)]
+        });
+        console.log(`[getMultipleSessions] Session ${sessionId} loaded:`, info);
+        return { sessionId, info };
+      } catch (error) {
+        console.log(`[getMultipleSessions] Failed to get session ${sessionId}:`, error);
+        throw error;
+      }
+    })
+  );
+
+  console.log('[getMultipleSessions] Total requests:', sessions.length);
+  console.log('[getMultipleSessions] Successful requests:', sessions.filter(s => s.status === 'fulfilled').length);
+  console.log('[getMultipleSessions] Failed requests:', sessions.filter(s => s.status === 'rejected').length);
+
+  // 打印每个成功的请求详情
+  sessions.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      console.log(`[getMultipleSessions] Session ${index + 1} success:`, result.value);
+    } else {
+      console.log(`[getMultipleSessions] Session ${index + 1} failed:`, result.reason);
+    }
+  });
+
+  // 过滤成功的请求
+  return sessions
+    .filter((result): result is PromiseFulfilledResult<{ sessionId: number; info: any }> => result.status === 'fulfilled')
+    .map(result => ({
+      id: result.value.info.id,
+      name: result.value.info.sessionName,
+      description: result.value.info.description,
+      genre: result.value.info.genre,
+      bpm: Number(result.value.info.bpm),
+      maxTracks: Number(result.value.info.maxTracks),
+      progress: Number(result.value.info.currentTrackIndex),
+      isFinalized: result.value.info.isFinalized,
+      contributors: result.value.info.contributors,
+      trackIds: result.value.info.trackIds,
+      trackFilledStatus: result.value.info.trackFilledStatus,
+      createdAt: Number(result.value.info.createdAt),
+      completedAt: Number(result.value.info.completedAt)
+    }));
 }
