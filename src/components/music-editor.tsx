@@ -5,10 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Music, X, Piano, Edit3, Trash2, Eye } from 'lucide-react';
-import { PianoRollNew, PianoNote } from '@/components/piano-roll-new';
+import { PianoRollNew, PianoNote, INSTRUMENT_PRESETS } from '@/components/piano-roll-new';
 import { PianoRollReadonly } from '@/components/piano-roll-readonly';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
-import { InstrumentType } from '@/lib/sound-library';
+import { InstrumentType, NoteName } from '@/lib/sound-library';
+
+// 音色预设类型
+interface InstrumentPreset {
+  id: string;
+  name: string;
+  category: 'oscillator' | 'drum' | 'vocal';
+  oscillatorType?: 'sine' | 'square' | 'sawtooth' | 'triangle';
+  color: string;
+}
 
 export type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
 type TrackId = string;
@@ -165,6 +174,145 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
     setTimeout(() => setToastMessage(null), 3000);
   }, []);
 
+  // 播放鼓声
+  const playDrumSound = useCallback((drumType: string, duration: number) => {
+    if (!audioEngine) return;
+    const ctx = audioEngine.getAudioContext?.();
+    if (!ctx) return;
+
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    switch (drumType) {
+      case 'kick':
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(150, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(1, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.3);
+        break;
+
+      case 'snare':
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(180, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.05);
+        gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.2);
+
+        const bufferSize = ctx.sampleRate * 0.2;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.3, ctx.currentTime);
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        noise.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+        noise.start();
+        break;
+
+      case 'hihat':
+        const hiHatBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.1, ctx.sampleRate);
+        const hiHatData = hiHatBuffer.getChannelData(0);
+        for (let i = 0; i < hiHatData.length; i++) {
+          hiHatData[i] = (Math.random() * 2 - 1) * 0.5;
+        }
+        const hiHat = ctx.createBufferSource();
+        hiHat.buffer = hiHatBuffer;
+        const hiHatGain = ctx.createGain();
+        hiHatGain.gain.setValueAtTime(0.2, ctx.currentTime);
+        hiHatGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+        hiHat.connect(hiHatGain);
+        hiHatGain.connect(ctx.destination);
+        hiHat.start();
+        break;
+
+      case 'tom':
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(100, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.2);
+        gainNode.gain.setValueAtTime(0.7, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.4);
+        break;
+
+      case 'crash':
+        const crashBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+        const crashData = crashBuffer.getChannelData(0);
+        for (let i = 0; i < crashData.length; i++) {
+          crashData[i] = (Math.random() * 2 - 1) * 0.8;
+        }
+        const crash = ctx.createBufferSource();
+        crash.buffer = crashBuffer;
+        const crashGain = ctx.createGain();
+        crashGain.gain.setValueAtTime(0.5, ctx.currentTime);
+        crashGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+        crash.connect(crashGain);
+        crashGain.connect(ctx.destination);
+        crash.start();
+        break;
+
+      case 'ride':
+        const rideBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+        const rideData = rideBuffer.getChannelData(0);
+        for (let i = 0; i < rideData.length; i++) {
+          rideData[i] = (Math.random() * 2 - 1) * 0.6;
+        }
+        const ride = ctx.createBufferSource();
+        ride.buffer = rideBuffer;
+        const rideGain = ctx.createGain();
+        rideGain.gain.setValueAtTime(0.4, ctx.currentTime);
+        rideGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        ride.connect(rideGain);
+        rideGain.connect(ctx.destination);
+        ride.start();
+        break;
+    }
+  }, [audioEngine]);
+
+  // 播放人声合唱
+  const playVocalSound = useCallback((frequency: number, duration: number, type: 'sine' | 'square' | 'sawtooth' | 'triangle', velocity: number) => {
+    if (!audioEngine) return;
+    const ctx = audioEngine.getAudioContext?.();
+    if (!ctx) return;
+
+    const numVoices = 3;
+    const gainNode = ctx.createGain();
+
+    for (let i = 0; i < numVoices; i++) {
+      const oscillator = ctx.createOscillator();
+      oscillator.type = type;
+      const detune = (Math.random() - 0.5) * 10;
+      oscillator.frequency.value = frequency * (1 + detune / 1200);
+
+      const voiceGain = ctx.createGain();
+      voiceGain.gain.setValueAtTime(velocity * 0.15, ctx.currentTime);
+      voiceGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+
+      oscillator.connect(voiceGain);
+      voiceGain.connect(gainNode);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + duration);
+    }
+
+    gainNode.connect(ctx.destination);
+  }, [audioEngine]);
+
   // 播放控制
   const handlePlay = async () => {
     if (isPlaying) {
@@ -242,25 +390,31 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
 
       if (delay >= 0) {
         const timeoutId = setTimeout(() => {
-          // 使用音色库播放音符，而不是简单的sine波形
-          const duration = note.duration * 0.125; // 每个16分音符0.125秒
+          // 根据音符的instrumentType找到对应的音色预设
+          const instrument = [...Object.values(INSTRUMENT_PRESETS).flat()].find(i => i.id === note.instrumentType);
 
-          // 根据trackType映射到InstrumentType
-          const instrumentTypeMap: Record<TrackType, InstrumentType> = {
-            'Drum': 'drum',
-            'Bass': 'bass',
-            'Synth': 'synth',
-            'Vocal': 'vocal'
-          };
+          if (!instrument) {
+            // 如果找不到预设，使用默认合成器
+            const frequency = noteToFrequency(note.note, note.octave);
+            audioEngine?.playNote(frequency, note.duration * 0.125, note.velocity, 'sine');
+            pendingTimeouts.current.delete(timeoutId);
+            return;
+          }
 
-          const instrumentType = instrumentTypeMap[track.type] || 'synth';
-          audioEngine?.playInstrumentNote(
-            instrumentType,
-            note.note as any,
-            note.octave,
-            duration,
-            note.velocity
-          );
+          // 根据音色预设的category决定如何播放
+          if (instrument.category === 'drum') {
+            // 播放鼓声
+            playDrumSound(instrument.id, note.duration * 0.125);
+          } else if (instrument.category === 'vocal') {
+            // 播放人声合唱
+            const frequency = noteToFrequency(note.note, note.octave);
+            playVocalSound(frequency, note.duration * 0.125, instrument.oscillatorType || 'sine', note.velocity);
+          } else {
+            // 播放合成器音符
+            const frequency = noteToFrequency(note.note, note.octave);
+            audioEngine?.playNote(frequency, note.duration * 0.125, note.velocity, instrument.oscillatorType || 'sine');
+          }
+
           pendingTimeouts.current.delete(timeoutId);
         }, delay * 1000);
         pendingTimeouts.current.add(timeoutId);

@@ -3,8 +3,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Play, Pause } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { PianoNote, NoteType } from '@/components/piano-roll-new';
+import { PianoNote, NoteType, INSTRUMENT_PRESETS } from '@/components/piano-roll-new';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
+
+// 音色预设类型
+interface InstrumentPreset {
+  id: string;
+  name: string;
+  category: 'oscillator' | 'drum' | 'vocal';
+  oscillatorType?: 'sine' | 'square' | 'sawtooth' | 'triangle';
+  color: string;
+}
 
 const PIANO_NOTES: NoteType[] = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const OCTAVES = [3, 4, 5];
@@ -104,12 +113,171 @@ export function PianoRollReadonly({ isOpen, onClose, trackName, trackType, notes
     animationFrameRef.current = requestAnimationFrame(animate);
   };
 
+  // 播放鼓声
+  const playDrumSound = (drumType: string, duration: number) => {
+    if (!audioEngine) return;
+    const ctx = audioEngine.getAudioContext?.();
+    if (!ctx) return;
+
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    switch (drumType) {
+      case 'kick':
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(150, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(1, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.3);
+        break;
+
+      case 'snare':
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(180, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.05);
+        gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.2);
+
+        const bufferSize = ctx.sampleRate * 0.2;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.3, ctx.currentTime);
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        noise.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+        noise.start();
+        break;
+
+      case 'hihat':
+        const hiHatBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.1, ctx.sampleRate);
+        const hiHatData = hiHatBuffer.getChannelData(0);
+        for (let i = 0; i < hiHatData.length; i++) {
+          hiHatData[i] = (Math.random() * 2 - 1) * 0.5;
+        }
+        const hiHat = ctx.createBufferSource();
+        hiHat.buffer = hiHatBuffer;
+        const hiHatGain = ctx.createGain();
+        hiHatGain.gain.setValueAtTime(0.2, ctx.currentTime);
+        hiHatGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+        hiHat.connect(hiHatGain);
+        hiHatGain.connect(ctx.destination);
+        hiHat.start();
+        break;
+
+      case 'tom':
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(100, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.2);
+        gainNode.gain.setValueAtTime(0.7, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.4);
+        break;
+
+      case 'crash':
+        const crashBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+        const crashData = crashBuffer.getChannelData(0);
+        for (let i = 0; i < crashData.length; i++) {
+          crashData[i] = (Math.random() * 2 - 1) * 0.8;
+        }
+        const crash = ctx.createBufferSource();
+        crash.buffer = crashBuffer;
+        const crashGain = ctx.createGain();
+        crashGain.gain.setValueAtTime(0.5, ctx.currentTime);
+        crashGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+        crash.connect(crashGain);
+        crashGain.connect(ctx.destination);
+        crash.start();
+        break;
+
+      case 'ride':
+        const rideBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+        const rideData = rideBuffer.getChannelData(0);
+        for (let i = 0; i < rideData.length; i++) {
+          rideData[i] = (Math.random() * 2 - 1) * 0.6;
+        }
+        const ride = ctx.createBufferSource();
+        ride.buffer = rideBuffer;
+        const rideGain = ctx.createGain();
+        rideGain.gain.setValueAtTime(0.4, ctx.currentTime);
+        rideGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        ride.connect(rideGain);
+        rideGain.connect(ctx.destination);
+        ride.start();
+        break;
+    }
+  };
+
+  // 播放人声合唱
+  const playVocalSound = (frequency: number, duration: number, type: 'sine' | 'square' | 'sawtooth' | 'triangle', velocity: number) => {
+    if (!audioEngine) return;
+    const ctx = audioEngine.getAudioContext?.();
+    if (!ctx) return;
+
+    const numVoices = 3;
+    const gainNode = ctx.createGain();
+
+    for (let i = 0; i < numVoices; i++) {
+      const oscillator = ctx.createOscillator();
+      oscillator.type = type;
+      const detune = (Math.random() - 0.5) * 10;
+      oscillator.frequency.value = frequency * (1 + detune / 1200);
+
+      const voiceGain = ctx.createGain();
+      voiceGain.gain.setValueAtTime(velocity * 0.15, ctx.currentTime);
+      voiceGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+
+      oscillator.connect(voiceGain);
+      voiceGain.connect(gainNode);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + duration);
+    }
+
+    gainNode.connect(ctx.destination);
+  };
+
   const playNoteSound = (note: PianoNote) => {
     if (!audioEngine) return;
 
     const frequency = noteToFrequency(note.note, note.octave);
     const duration = note.duration * (60 / BPM) / SIXTEENTH_NOTES_PER_BEAT;
-    audioEngine.playNote(frequency, duration, note.velocity, 'sine');
+
+    // 根据音符的instrumentType找到对应的音色预设
+    const instrument = [...Object.values(INSTRUMENT_PRESETS).flat()].find(i => i.id === note.instrumentType);
+
+    if (!instrument) {
+      // 如果找不到预设，使用默认合成器
+      audioEngine.playNote(frequency, duration, note.velocity, 'sine');
+      return;
+    }
+
+    // 根据音色预设的category决定如何播放
+    if (instrument.category === 'drum') {
+      // 播放鼓声
+      playDrumSound(instrument.id, duration);
+    } else if (instrument.category === 'vocal') {
+      // 播放人声合唱
+      playVocalSound(frequency, duration, instrument.oscillatorType || 'sine', note.velocity);
+    } else {
+      // 播放合成器音符
+      audioEngine.playNote(frequency, duration, note.velocity, instrument.oscillatorType || 'sine');
+    }
   };
 
   // 计算音符网格位置

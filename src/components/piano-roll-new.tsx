@@ -36,7 +36,7 @@ interface PianoRollProps {
 }
 
 // 专业音色库 - 按轨道类型分类
-const INSTRUMENT_PRESETS: Record<string, InstrumentPreset[]> = {
+export const INSTRUMENT_PRESETS: Record<string, InstrumentPreset[]> = {
   Drum: [
     { id: 'kick', name: 'Kick Drum', category: 'drum', oscillatorType: 'sine', color: '#3b82f6' },
     { id: 'snare', name: 'Snare Drum', category: 'drum', oscillatorType: 'square', color: '#60a5fa' },
