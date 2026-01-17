@@ -322,7 +322,7 @@ function HomePage() {
                       value={newSession.name}
                       onChange={(e) => setNewSession({ ...newSession, name: e.target.value })}
                       placeholder="Neon Dreams"
-                      className="bg-slate-800 border-slate-700"
+                      className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
                     />
                   </div>
                   <div>
@@ -331,14 +331,14 @@ function HomePage() {
                       value={newSession.description}
                       onChange={(e) => setNewSession({ ...newSession, description: e.target.value })}
                       placeholder="A collaborative synthwave masterpiece"
-                      className="bg-slate-800 border-slate-700"
+                      className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label className="text-slate-300">Genre</Label>
                       <Select value={newSession.genre} onValueChange={(value) => setNewSession({ ...newSession, genre: value })}>
-                        <SelectTrigger className="bg-slate-800 border-slate-700">
+                        <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                           <SelectValue placeholder="Select genre" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-800 border-slate-700">
@@ -357,7 +357,7 @@ function HomePage() {
                         value={newSession.bpm}
                         onChange={(e) => setNewSession({ ...newSession, bpm: parseInt(e.target.value) })}
                         placeholder="120"
-                        className="bg-slate-800 border-slate-700"
+                        className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
                       />
                     </div>
                   </div>

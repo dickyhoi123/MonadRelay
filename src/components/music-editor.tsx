@@ -511,13 +511,22 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
     setPianoRollOpen(false);
   };
 
-  // 保存音轨
-  const handleSave = () => {
+  // 保存草稿
+  const handleSaveDraft = () => {
+    setIsSaving(true);
+    setTimeout(() => {
+      setIsSaving(false);
+      showToast('success', 'Draft saved! You can continue editing.');
+    }, 500);
+  };
+
+  // 上传音轨（完成并提交）
+  const handleUploadTrack = () => {
     setIsSaving(true);
     setTimeout(() => {
       setIsSaving(false);
       onSave?.({ tracks, currentBeat });
-      showToast('success', `${trackType} track saved successfully!`);
+      showToast('success', `${trackType} track uploaded successfully!`);
     }, 1500);
   };
 
@@ -609,7 +618,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                   className="cursor-pointer border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
                 >
                   <Upload className="h-4 w-4 mr-2" />
-                  Upload Audio
+                  Import Audio
                 </Button>
               </label>
               <Button
@@ -620,9 +629,9 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                 Cancel
               </Button>
               <Button
-                onClick={handleSave}
-                disabled={totalClips === 0 || isSaving}
-                className="bg-green-600 hover:bg-green-700"
+                onClick={handleSaveDraft}
+                disabled={isSaving}
+                className="bg-slate-600 hover:bg-slate-700"
               >
                 {isSaving ? (
                   <>
@@ -632,7 +641,24 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                 ) : (
                   <>
                     <Save className="h-4 w-4 mr-2" />
-                    Save Track
+                    Save Draft
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleUploadTrack}
+                disabled={totalClips === 0 || isSaving}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Track
                   </>
                 )}
               </Button>
@@ -693,223 +719,6 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                 handleSeek(percentage * TOTAL_BEATS);
               }}
             />
-          </div>
-        </div>
-
-        {/* 音轨区域 */}
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Tracks</h2>
-            <div className="flex items-center gap-2 text-sm text-slate-400">
-              <span>Total Clips: {totalClips}</span>
-              <span className="mx-2">•</span>
-              <span>Duration: {TOTAL_BARS} bars</span>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {tracks.map((track) => (
-              <div key={track.id} className="relative bg-slate-900/80 rounded-xl border-2 border-slate-800 overflow-hidden">
-                <div className="absolute inset-0 flex">
-                  {/* 轨道头部 */}
-                  <div className="w-64 flex-shrink-0 bg-slate-800/90 backdrop-blur-sm border-r border-slate-700 p-4 flex flex-col justify-between min-w-64">
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className={`w-4 h-4 rounded-full shadow-lg`} style={{ backgroundColor: track.color }} />
-                        <span className="text-white font-bold text-base">{track.name}</span>
-                      </div>
-                      <div className="flex gap-2 mb-3">
-                        <Button
-                          variant={track.isMuted ? "destructive" : "outline"}
-                          size="sm"
-                          onClick={() => handleMuteToggle(track.id)}
-                          className={`h-7 text-xs px-3 ${track.isMuted ? '' : 'border-slate-600 hover:border-slate-500'}`}
-                        >
-                          M
-                        </Button>
-                        <Button
-                          variant={track.isSolo ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleSoloToggle(track.id)}
-                          className={`h-7 text-xs px-3 ${!track.isSolo ? 'border-slate-600 hover:border-slate-500' : ''}`}
-                        >
-                          S
-                        </Button>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenPianoRoll(track.id)}
-                        className="w-full border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white mb-2 font-semibold"
-                      >
-                        <Piano className="h-4 w-4 mr-2" />
-                        Piano Roll
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Volume2 className={`h-4 w-4 ${track.isMuted ? 'text-slate-600' : 'text-slate-400'}`} />
-                      <Slider
-                        value={[track.volume]}
-                        onValueChange={(value) => handleVolumeChange(track.id, value[0])}
-                        max={100}
-                        className="flex-1"
-                      />
-                      <span className="text-xs font-medium text-slate-400 w-10">{track.volume}%</span>
-                    </div>
-                  </div>
-
-                  {/* 音频片段区域 */}
-                  <div className="flex-1 relative h-40 bg-slate-950 min-h-40">
-                    {/* 网格线 */}
-                    <div className="absolute inset-0 pointer-events-none">
-                      {Array.from({ length: TOTAL_BEATS + 1 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`absolute top-0 bottom-0 w-px ${
-                            i % BEATS_PER_BAR === 0 ? 'bg-purple-500/30' : 'bg-slate-800/20'
-                          }`}
-                          style={{ left: `${(i / TOTAL_BEATS) * 100}%` }}
-                        />
-                      ))}
-                    </div>
-
-                    {/* 音频片段 */}
-                    {track.clips.map((clip) => {
-                      const isDragging = draggingClip?.clipId === clip.id;
-                      const isSelected = selectedClip?.clipId === clip.id;
-
-                      return (
-                        <div
-                          key={clip.id}
-                          className={`absolute h-28 top-6 rounded-lg cursor-move border-2 transition-all shadow-lg ${
-                            isSelected ? 'border-white shadow-xl shadow-purple-500/30' : `border-transparent`
-                          } ${isDragging ? 'opacity-80 scale-105 shadow-2xl' : 'hover:border-slate-500'}`}
-                          style={{
-                            left: `${(clip.startTime / TOTAL_BEATS) * 100}%`,
-                            width: `${(clip.duration / TOTAL_BEATS) * 100}%`,
-                            backgroundColor: `${clip.color}60`,
-                            backdropFilter: 'blur(8px)',
-                            minWidth: '60px'
-                          }}
-                          onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)}
-                        >
-                          {/* 波形可视化 / 音符分布 */}
-                          <div className="absolute inset-0 overflow-hidden">
-                            {clip.pianoNotes && clip.pianoNotes.length > 0 ? (
-                              // 显示真实的音符分布
-                              <div className="absolute inset-0 flex">
-                                {clip.pianoNotes.map((note, idx) => {
-                                  const noteIndex = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].indexOf(note.note);
-                                  const octaveOffset = (note.octave - 3) * 12; // OCTAVES从3开始
-                                  const noteTotalIndex = octaveOffset + noteIndex;
-                                  const totalNotes = 3 * 12; // 3个八度
-                                  const reversedIndex = totalNotes - 1 - noteTotalIndex;
-                                  const topPercent = (reversedIndex / totalNotes) * 100;
-                                  const heightPercent = (1 / totalNotes) * 100;
-
-                                  return (
-                                    <div
-                                      key={note.id}
-                                      className="absolute border border-white/30 rounded-sm"
-                                      style={{
-                                        left: `${(note.startTime / 32) * 100}%`, // 假设clip时长为32个16分音符（8拍）
-                                        width: `${(note.duration / 32) * 100}%`,
-                                        top: `${topPercent}%`,
-                                        height: `${heightPercent}%`,
-                                        backgroundColor: clip.color,
-                                        minWidth: '3px'
-                                      }}
-                                    />
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              // 假波形（当没有音符时）
-                              <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-40 px-2">
-                                {Array.from({ length: 20 }).map((_, i) => (
-                                  <div
-                                    key={i}
-                                    className="rounded-full"
-                                    style={{
-                                      width: '4px',
-                                      height: `${40 + Math.random() * 50}%`,
-                                      backgroundColor: clip.color
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* 文件名和操作 */}
-                          <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
-                            <div className="flex-1 min-w-0">
-                              <span className="text-xs font-bold text-white drop-shadow-lg truncate block">
-                                {clip.name}
-                              </span>
-                              {clip.pianoNotes && clip.pianoNotes.length > 0 && (
-                                <span className="text-[10px] text-white/70 block">
-                                  {clip.pianoNotes.length} notes
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1 pointer-events-auto">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenReadonlyPianoRoll(track.id, clip.id);
-                                }}
-                                className="h-6 w-6 p-0 text-blue-300 hover:text-blue-200 hover:bg-blue-500/30 rounded-full"
-                                title="View (Read-only)"
-                              >
-                                <Eye className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenPianoRoll(track.id, clip.id);
-                                }}
-                                className="h-6 w-6 p-0 text-white/80 hover:text-white hover:bg-white/20 rounded-full"
-                                title="Edit in Piano Roll"
-                              >
-                                <Piano className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleClipDelete(track.id, clip.id);
-                                }}
-                                className="h-6 w-6 p-0 text-white/80 hover:text-white hover:bg-white/20 rounded-full"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-
-                          {/* 时间显示 */}
-                          <div className="absolute bottom-1 left-2 text-[10px] text-white/70 font-mono">
-                            Bar {Math.floor(clip.startTime / BEATS_PER_BAR) + 1}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* 空轨道提示 */}
-                    {track.clips.length === 0 && (
-                      <div className="absolute inset-6 border-2 border-dashed border-slate-700 rounded-lg flex items-center justify-center text-slate-600 text-sm">
-                        Drop audio files here or click Piano Roll to create notes
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
 
@@ -1046,7 +855,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
         </Card>
 
         {/* 快捷提示 */}
-        <Card className="mt-6 bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-purple-800">
+        <Card className="mt-6 bg-slate-900/50 border-slate-800">
           <CardContent className="p-6">
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
               <Music className="h-5 w-5" />
@@ -1054,28 +863,28 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
               <div className="flex items-start gap-2 text-slate-300">
-                <div className="w-6 h-6 rounded bg-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-xs shrink-0">1</div>
+                <div className="w-6 h-6 rounded bg-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs shrink-0">1</div>
                 <div>
                   <p className="font-medium text-white">Drag & Drop</p>
                   <p className="text-slate-400">Move clips by dragging</p>
                 </div>
               </div>
               <div className="flex items-start gap-2 text-slate-300">
-                <div className="w-6 h-6 rounded bg-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-xs shrink-0">2</div>
+                <div className="w-6 h-6 rounded bg-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs shrink-0">2</div>
                 <div>
                   <p className="font-medium text-white">Piano Roll</p>
                   <p className="text-slate-400">Create MIDI notes</p>
                 </div>
               </div>
               <div className="flex items-start gap-2 text-slate-300">
-                <div className="w-6 h-6 rounded bg-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-xs shrink-0">3</div>
+                <div className="w-6 h-6 rounded bg-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs shrink-0">3</div>
                 <div>
                   <p className="font-medium text-white">Audio Upload</p>
                   <p className="text-slate-400">Add your own sounds</p>
                 </div>
               </div>
               <div className="flex items-start gap-2 text-slate-300">
-                <div className="w-6 h-6 rounded bg-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-xs shrink-0">4</div>
+                <div className="w-6 h-6 rounded bg-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs shrink-0">4</div>
                 <div>
                   <p className="font-medium text-white">Play & Preview</p>
                   <p className="text-slate-400">Listen to your music</p>
