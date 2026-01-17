@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+z// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -11,21 +11,13 @@ import "./MasterComposition.sol";
  * @dev 核心逻辑合约，管理音乐创作的接力流程
  */
 contract MusicSession is Ownable, ReentrancyGuard {
-    
-    // Track 类型枚举（与 TrackNFT 保持一致）
-    enum TrackType {
-        Drum,       // 鼓
-        Bass,       // 贝斯
-        Synth,      // 合成器/旋律
-        Vocal       // 人声
-    }
 
     // Session 状态结构
     struct Session {
         uint256 id;                        // Session ID
         address[] contributors;            // 贡献者地址数组
         uint256[] trackIds;                // 音轨 NFT 数组（按顺序）
-        mapping(TrackType => bool) trackFilled; // 各类型是否已填满
+        mapping(TrackNFT.TrackType => bool) trackFilled; // 各类型是否已填满
         uint256 currentTrackIndex;         // 当前应该提交的音轨索引
         bool isFinalized;                  // 是否完成
         uint256 createdAt;                 // 创建时间
@@ -38,7 +30,7 @@ contract MusicSession is Ownable, ReentrancyGuard {
     }
 
     // Track 类型到索引的映射
-    mapping(TrackType => uint256) public trackTypeToIndex;
+    mapping(TrackNFT.TrackType => uint256) public trackTypeToIndex;
     
     // Session 存储
     mapping(uint256 => Session) public sessions;
@@ -69,7 +61,7 @@ contract MusicSession is Ownable, ReentrancyGuard {
         uint256 indexed sessionId,
         uint256 indexed trackId,
         address indexed contributor,
-        TrackType trackType,
+        TrackNFT.TrackType trackType,
         uint256 trackIndex
     );
 
@@ -86,7 +78,7 @@ contract MusicSession is Ownable, ReentrancyGuard {
     );
 
     modifier onlyValidSession(uint256 sessionId) {
-        require(sessionId > 0 && sessionId <= totalSessions, "Invalid session");
+        require(sessionId < totalSessions, "Invalid session");
         _;
     }
 
@@ -100,10 +92,10 @@ contract MusicSession is Ownable, ReentrancyGuard {
      */
     constructor() Ownable(msg.sender) {
         // 初始化 Track 类型到索引的映射
-        trackTypeToIndex[TrackType.Drum] = 0;
-        trackTypeToIndex[TrackType.Bass] = 1;
-        trackTypeToIndex[TrackType.Synth] = 2;
-        trackTypeToIndex[TrackType.Vocal] = 3;
+        trackTypeToIndex[TrackNFT.TrackType.Drum] = 0;
+        trackTypeToIndex[TrackNFT.TrackType.Bass] = 1;
+        trackTypeToIndex[TrackNFT.TrackType.Synth] = 2;
+        trackTypeToIndex[TrackNFT.TrackType.Vocal] = 3;
     }
 
     /**
@@ -112,6 +104,7 @@ contract MusicSession is Ownable, ReentrancyGuard {
     function setTrackNFT(address _trackNFT) external onlyOwner {
         require(_trackNFT != address(0), "Invalid address");
         trackNFT = TrackNFT(_trackNFT);
+        TrackNFT(_trackNFT).setMusicSession(address(this));
     }
 
     /**
@@ -166,7 +159,7 @@ contract MusicSession is Ownable, ReentrancyGuard {
     function joinAndCommit(
         uint256 sessionId,
         uint256 trackId,
-        TrackType trackType
+        TrackNFT.TrackType trackType
     ) external nonReentrant onlyValidSession(sessionId) onlySessionNotFinalized(sessionId) {
         Session storage session = sessions[sessionId];
         
@@ -176,7 +169,6 @@ contract MusicSession is Ownable, ReentrancyGuard {
         
         // 验证 Track NFT 所有权
         require(trackNFT.ownerOf(trackId) == msg.sender, "Not track owner");
-        require(!trackNFT.getTrackInfo(trackId).isCommitted, "Track already committed");
         
         // 提交 Track 到 Session
         trackNFT.commitToSession(trackId, sessionId);
@@ -191,7 +183,7 @@ contract MusicSession is Ownable, ReentrancyGuard {
         // 检查是否所有音轨都已填满
         uint256 filledCount = 0;
         for (uint256 i = 0; i < session.maxTracks; i++) {
-            TrackType t = TrackType(i);
+            TrackNFT.TrackType t = TrackNFT.TrackType(i);
             if (session.trackFilled[t]) {
                 filledCount++;
             }
@@ -281,7 +273,7 @@ contract MusicSession is Ownable, ReentrancyGuard {
         
         // 准备 Track 填充状态
         for (uint256 i = 0; i < 4; i++) {
-            TrackType t = TrackType(i);
+            TrackNFT.TrackType t = TrackNFT.TrackType(i);
             trackFilledStatus[i] = session.trackFilled[t];
         }
         
@@ -316,9 +308,9 @@ contract MusicSession is Ownable, ReentrancyGuard {
     /**
      * @dev 获取当前应该提交的 Track 类型
      */
-    function getCurrentTrackType(uint256 sessionId) external view onlyValidSession(sessionId) returns (TrackType) {
+    function getCurrentTrackType(uint256 sessionId) external view onlyValidSession(sessionId) returns (TrackNFT.TrackType) {
         Session storage session = sessions[sessionId];
-        return TrackType(session.currentTrackIndex);
+        return TrackNFT.TrackType(session.currentTrackIndex);
     }
 
     /**
@@ -329,7 +321,7 @@ contract MusicSession is Ownable, ReentrancyGuard {
         
         uint256 filledCount = 0;
         for (uint256 i = 0; i < session.maxTracks; i++) {
-            TrackType t = TrackType(i);
+            TrackNFT.TrackType t = TrackNFT.TrackType(i);
             if (session.trackFilled[t]) {
                 filledCount++;
             }

@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/finance/PaymentSplitter.sol";
 
 /**
  * @title MasterComposition
@@ -68,14 +67,14 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
      * @param sessionId Session ID
      * @param contributors 贡献者地址列表
      * @param trackIds 关联的 Track NFT ID 列表
-     * @param tokenURI 元数据 URI
+     * @param _tokenURI 元数据 URI
      */
     function mintMaster(
         address to,
         uint256 sessionId,
         address[] memory contributors,
         uint256[] memory trackIds,
-        string memory tokenURI
+        string memory _tokenURI
     ) external nonReentrant returns (uint256) {
         require(contributors.length == trackIds.length, "Length mismatch");
         require(contributors.length > 0, "No contributors");
@@ -84,7 +83,7 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
         uint256 masterTokenId = _nextTokenId++;
         
         _safeMint(to, masterTokenId);
-        _setTokenURI(masterTokenId, tokenURI);
+        _setTokenURI(masterTokenId, _tokenURI);
         
         // 存储元数据
         compositionMetadata[masterTokenId] = CompositionMetadata({

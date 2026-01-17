@@ -87,6 +87,16 @@ contract TrackNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         return tokenId;
     }
 
+    // MusicSession 合约地址
+    address public musicSession;
+
+    /**
+     * @dev 设置 MusicSession 合约地址（仅 Owner）
+     */
+    function setMusicSession(address _musicSession) external {
+        musicSession = _musicSession;
+    }
+
     /**
      * @dev 将 Track 提交到 Session（由 MusicSession 合约调用）
      * @param tokenId Track NFT ID
@@ -96,7 +106,7 @@ contract TrackNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         uint256 tokenId,
         uint256 sessionId
     ) external nonReentrant {
-        require(_ownerOf(tokenId) == msg.sender, "Not the track owner");
+        require(msg.sender == musicSession, "Not authorized");
         require(!trackMetadata[tokenId].isCommitted, "Already committed");
         
         trackMetadata[tokenId].sessionId = sessionId;
