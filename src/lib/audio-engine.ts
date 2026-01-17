@@ -1,16 +1,31 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
+import { SoundLibrary, InstrumentType, NoteName } from './sound-library';
 
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private gainNodes: Map<string, GainNode> = new Map();
   private activeSources: Map<string, AudioBufferSourceNode> = new Map();
+  private soundLibrary: SoundLibrary | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
+  }
+
+  // 初始化音色库
+  initializeSoundLibrary() {
+    if (this.audioContext && !this.soundLibrary) {
+      this.soundLibrary = new SoundLibrary(this.audioContext);
+    }
+    return this.soundLibrary;
+  }
+
+  // 获取音色库
+  getSoundLibrary() {
+    return this.soundLibrary;
   }
 
   private ensureContext() {
@@ -63,6 +78,29 @@ export class AudioEngine {
 
     oscillator.start(this.audioContext.currentTime);
     oscillator.stop(this.audioContext.currentTime + duration);
+  }
+
+  // 播放音符（使用音色库）
+  async playInstrumentNote(
+    instrument: InstrumentType,
+    note: NoteName,
+    octave: number,
+    duration: number,
+    volume: number = 1.0
+  ): Promise<void> {
+    this.ensureContext();
+
+    if (!this.soundLibrary) {
+      this.initializeSoundLibrary();
+    }
+
+    if (this.soundLibrary) {
+      await this.soundLibrary.playNote(instrument, note, octave, duration, volume);
+    } else {
+      // 回退到合成器
+      const frequency = noteToFrequency(note, octave);
+      this.playNote(frequency, duration, volume, 'sine');
+    }
   }
 
   // 停止所有音频
