@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -10,7 +10,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2 } from 'lucide-react';
+import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, X } from 'lucide-react';
+import { WalletProvider, useWallet } from '@/contexts/wallet-context';
+import { WalletButton } from '@/components/wallet-button';
+import { MusicEditor } from '@/components/music-editor';
+import { ChatRoom } from '@/components/chat-room';
+import { TrackUploader } from '@/components/track-uploader';
 
 // 类型定义
 type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
@@ -41,7 +46,7 @@ const mockSessions: Session[] = [
     totalTracks: 4,
     currentTrackType: 'Synth',
     isFinalized: false,
-    contributors: ['0x1234...abcd', '0x5678...efgh'],
+    contributors: ['1234abcd5678efgh'],
     createdAt: Date.now() - 3600000
   },
   {
@@ -54,7 +59,7 @@ const mockSessions: Session[] = [
     totalTracks: 4,
     currentTrackType: 'Bass',
     isFinalized: false,
-    contributors: ['0x9876...ijkl'],
+    contributors: ['9876ijkl5432mnop'],
     createdAt: Date.now() - 7200000
   },
   {
@@ -67,7 +72,7 @@ const mockSessions: Session[] = [
     totalTracks: 4,
     currentTrackType: 'Vocal',
     isFinalized: true,
-    contributors: ['0x1111...2222', '0x3333...4444', '0x5555...6666', '0x7777...8888'],
+    contributors: ['1111222233334444', '5555666677778888', 'aaaabbbbccccdddd', 'eeeeffffgggghhhh'],
     createdAt: Date.now() - 86400000
   }
 ];
@@ -80,9 +85,9 @@ const trackColors: Record<TrackType, string> = {
   Vocal: 'bg-pink-500'
 };
 
-export default function Home() {
+function AppContent() {
+  const { isConnected } = useWallet();
   const [sessions, setSessions] = useState<Session[]>(mockSessions);
-  const [isLoading, setIsLoading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newSession, setNewSession] = useState({
     name: '',
@@ -91,8 +96,20 @@ export default function Home() {
     bpm: 120,
     maxTracks: 4
   });
+  
+  // 页面状态
+  const [currentPage, setCurrentPage] = useState<'home' | 'editor' | 'chat'>('home');
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [selectedTrackType, setSelectedTrackType] = useState<TrackType>('Drum');
+  
+  // 独立的加载状态映射
+  const [loadingStates, setLoadingStates] = useState<{ [key: number]: boolean }>({});
 
-  const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  const formatAddress = (addr: string) => {
+    // 从 0x 后面开始显示
+    const withoutPrefix = addr.startsWith('0x') ? addr.slice(2) : addr;
+    return `${withoutPrefix.slice(0, 4)}...${withoutPrefix.slice(-4)}`;
+  };
 
   const formatTime = (timestamp: number) => {
     const diff = Date.now() - timestamp;
@@ -103,45 +120,207 @@ export default function Home() {
   };
 
   const handleCreateSession = () => {
-    setIsLoading(true);
-    // 模拟创建 Session
-    setTimeout(() => {
-      const session: Session = {
-        id: sessions.length + 1,
-        name: newSession.name,
-        description: newSession.description,
-        genre: newSession.genre,
-        bpm: newSession.bpm,
-        progress: 0,
-        totalTracks: newSession.maxTracks,
-        currentTrackType: 'Drum',
-        isFinalized: false,
-        contributors: [],
-        createdAt: Date.now()
-      };
-      setSessions([session, ...sessions]);
-      setShowCreateDialog(false);
-      setIsLoading(false);
-      setNewSession({ name: '', description: '', genre: '', bpm: 120, maxTracks: 4 });
-    }, 1500);
+    const session: Session = {
+      id: sessions.length + 1,
+      name: newSession.name,
+      description: newSession.description,
+      genre: newSession.genre,
+      bpm: newSession.bpm,
+      progress: 0,
+      totalTracks: newSession.maxTracks,
+      currentTrackType: 'Drum',
+      isFinalized: false,
+      contributors: [],
+      createdAt: Date.now()
+    };
+    setSessions([session, ...sessions]);
+    setShowCreateDialog(false);
+    setNewSession({ name: '', description: '', genre: '', bpm: 120, maxTracks: 4 });
   };
 
   const handleJoinSession = (sessionId: number) => {
-    setIsLoading(true);
+    setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
+    
     setTimeout(() => {
-      setSessions(sessions.map(s => {
-        if (s.id === sessionId && s.progress < s.totalTracks) {
-          return {
-            ...s,
-            progress: s.progress + 1,
-            currentTrackType: trackTypes[s.progress + 1] || s.currentTrackType,
-            contributors: [...s.contributors, `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`],
-            isFinalized: s.progress + 1 >= s.totalTracks
-          };
-        }
-        return s;
-      }));
-      setIsLoading(false);
+      const session = sessions.find(s => s.id === sessionId);
+      if (!session) return;
+
+      if (session.progress < session.totalTracks) {
+        setSessions(sessions.map(s => {
+          if (s.id === sessionId) {
+            return {
+              ...s,
+              progress: s.progress + 1,
+              currentTrackType: trackTypes[s.progress + 1] || s.currentTrackType,
+              contributors: [...s.contributors, Math.random().toString(16).slice(0, 16)],
+              isFinalized: s.progress + 1 >= s.totalTracks
+            };
+          }
+          return s;
+        }));
+        
+        // 打开编辑器
+        setSelectedSession(sessions.find(s => s.id === sessionId)!);
+        setSelectedTrackType(session.currentTrackType);
+        setCurrentPage('editor');
+      }
+      
+      setLoadingStates(prev => ({ ...prev, [sessionId]: false }));
+    }, 1000);
+  };
+
+  const handleOpenChat = (session: Session) => {
+    setSelectedSession(session);
+    setCurrentPage('chat');
+  };
+
+  const handleSaveTrack = (data: any) => {
+    console.log('Saving track:', data);
+    setCurrentPage('home');
+  };
+
+  // 如果未连接钱包，显示提示
+  if (!isConnected && currentPage !== 'home') {
+    return <HomePage />;
+  }
+
+  // 渲染不同页面
+  if (currentPage === 'editor' && selectedSession) {
+    return (
+      <div className="relative">
+        <div className="fixed top-4 right-4 z-50 flex gap-4">
+          <WalletButton />
+          <Button 
+            variant="outline" 
+            onClick={() => setCurrentPage('chat')}
+            className="bg-purple-600 hover:bg-purple-700 text-white border-none"
+          >
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Chat
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => setCurrentPage('home')}
+          >
+            <X className="h-4 w-4 mr-2" />
+            Close
+          </Button>
+        </div>
+        <MusicEditor
+          sessionId={selectedSession.id}
+          sessionName={selectedSession.name}
+          trackType={selectedTrackType}
+          onSave={handleSaveTrack}
+          onCancel={() => setCurrentPage('home')}
+        />
+      </div>
+    );
+  }
+
+  if (currentPage === 'chat' && selectedSession) {
+    return (
+      <div className="relative">
+        <div className="fixed top-4 right-4 z-50 flex gap-4">
+          <WalletButton />
+          {selectedSession.progress < selectedSession.totalTracks && (
+            <Button 
+              variant="outline"
+              onClick={() => setCurrentPage('editor')}
+              className="bg-purple-600 hover:bg-purple-700 text-white border-none"
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Edit Track
+            </Button>
+          )}
+          <Button 
+            variant="outline" 
+            onClick={() => setCurrentPage('home')}
+          >
+            <X className="h-4 w-4 mr-2" />
+            Close
+          </Button>
+        </div>
+        <ChatRoom 
+          sessionId={selectedSession.id} 
+          sessionName={selectedSession.name}
+        />
+      </div>
+    );
+  }
+
+  return <HomePage />;
+}
+
+function HomePage() {
+  const { isConnected } = useWallet();
+  const [sessions, setSessions] = useState<Session[]>(mockSessions);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newSession, setNewSession] = useState({
+    name: '',
+    description: '',
+    genre: '',
+    bpm: 120,
+    maxTracks: 4
+  });
+  const [loadingStates, setLoadingStates] = useState<{ [key: number]: boolean }>({});
+  const [selectedSessionForChat, setSelectedSessionForChat] = useState<Session | null>(null);
+
+  const formatAddress = (addr: string) => {
+    const withoutPrefix = addr.startsWith('0x') ? addr.slice(2) : addr;
+    return `${withoutPrefix.slice(0, 4)}...${withoutPrefix.slice(-4)}`;
+  };
+
+  const formatTime = (timestamp: number) => {
+    const diff = Date.now() - timestamp;
+    const hours = Math.floor(diff / 3600000);
+    if (hours < 1) return 'Just now';
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
+
+  const handleCreateSession = () => {
+    if (!newSession.name || !newSession.genre) return;
+    
+    const session: Session = {
+      id: sessions.length + 1,
+      name: newSession.name,
+      description: newSession.description,
+      genre: newSession.genre,
+      bpm: newSession.bpm,
+      progress: 0,
+      totalTracks: newSession.maxTracks,
+      currentTrackType: 'Drum',
+      isFinalized: false,
+      contributors: [],
+      createdAt: Date.now()
+    };
+    setSessions([session, ...sessions]);
+    setShowCreateDialog(false);
+    setNewSession({ name: '', description: '', genre: '', bpm: 120, maxTracks: 4 });
+  };
+
+  const handleJoinSession = (sessionId: number) => {
+    if (!isConnected) return;
+    
+    setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
+    
+    setTimeout(() => {
+      const session = sessions.find(s => s.id === sessionId);
+      if (session && session.progress < session.totalTracks) {
+        setSessions(sessions.map(s => {
+          if (s.id === sessionId) {
+            return {
+              ...s,
+              progress: s.progress + 1,
+              currentTrackType: trackTypes[s.progress + 1] || s.currentTrackType,
+              contributors: [...s.contributors, Math.random().toString(16).slice(0, 16)],
+              isFinalized: s.progress + 1 >= s.totalTracks
+            };
+          }
+          return s;
+        }));
+      }
+      setLoadingStates(prev => ({ ...prev, [sessionId]: false }));
     }, 1000);
   };
 
@@ -149,17 +328,35 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <header className="mb-12 text-center">
-          <div className="flex items-center justify-center gap-3 mb-4">
+        <header className="mb-12 flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <Music className="h-10 w-10 text-purple-400" />
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-              Monad Relay
-            </h1>
+            <div>
+              <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+                Monad Relay
+              </h1>
+              <p className="text-sm text-slate-400 mt-1">
+                接力式音轨合成协议 - 链上多人协作音乐创作平台
+              </p>
+            </div>
           </div>
-          <p className="text-xl text-slate-300 max-w-2xl mx-auto">
-            接力式音轨合成协议 - 链上多人协作音乐创作平台
-          </p>
+          <WalletButton />
         </header>
+
+        {/* 未连接钱包提示 */}
+        {!isConnected && (
+          <Card className="mb-8 bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-purple-800">
+            <CardContent className="p-6 text-center">
+              <Music className="h-16 w-16 text-purple-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-white mb-2">
+                Connect Your Wallet to Get Started
+              </h3>
+              <p className="text-slate-400">
+                Connect your wallet to create sessions, upload tracks, and collaborate with others
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
@@ -193,13 +390,10 @@ export default function Home() {
               <TabsTrigger value="completed" className="data-[state=active]:bg-purple-600">
                 Completed
               </TabsTrigger>
-              <TabsTrigger value="my-sessions" className="data-[state=active]:bg-purple-600">
-                My Sessions
-              </TabsTrigger>
             </TabsList>
             <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
               <DialogTrigger asChild>
-                <Button className="bg-purple-600 hover:bg-purple-700">
+                <Button disabled={!isConnected} className="bg-purple-600 hover:bg-purple-700">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Session
                 </Button>
@@ -257,8 +451,7 @@ export default function Home() {
                       />
                     </div>
                   </div>
-                  <Button onClick={handleCreateSession} disabled={isLoading || !newSession.name || !newSession.genre} className="w-full bg-purple-600 hover:bg-purple-700">
-                    {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  <Button onClick={handleCreateSession} disabled={!newSession.name || !newSession.genre} className="w-full bg-purple-600 hover:bg-purple-700">
                     Create Session
                   </Button>
                 </div>
@@ -334,7 +527,7 @@ export default function Home() {
                             className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold border-2 border-slate-900"
                             title={contributor}
                           >
-                            {contributor.slice(0, 2)}
+                            {formatAddress(contributor)}
                           </div>
                         ))}
                         {session.contributors.length > 3 && (
@@ -345,28 +538,28 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Current Track Indicator */}
-                    {session.progress < session.totalTracks && (
-                      <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-lg p-3">
-                        <p className="text-sm text-purple-300 font-medium">
-                          🎵 Waiting for: <span className="text-white font-bold">{session.currentTrackType}</span> track
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Action Button */}
-                    <Button
-                      onClick={() => handleJoinSession(session.id)}
-                      disabled={isLoading || session.isFinalized}
-                      className="w-full bg-purple-600 hover:bg-purple-700"
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Music className="h-4 w-4 mr-2" />
-                      )}
-                      Join & Upload Track
-                    </Button>
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleJoinSession(session.id)}
+                        disabled={!isConnected || loadingStates[session.id] || session.isFinalized}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700"
+                      >
+                        {loadingStates[session.id] ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Music className="h-4 w-4 mr-2" />
+                        )}
+                        {session.progress < session.totalTracks ? 'Join & Upload' : 'Full'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedSessionForChat(session)}
+                        className="border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -394,26 +587,46 @@ export default function Home() {
                         {session.contributors.length} contributors
                       </p>
                     </div>
-                    <Button variant="outline" className="w-full border-green-600 text-green-400 hover:bg-green-600 hover:text-white">
-                      <Music className="h-4 w-4 mr-2" />
-                      Listen to Master Track
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" className="flex-1 border-green-600 text-green-400 hover:bg-green-600 hover:text-white">
+                        <Music className="h-4 w-4 mr-2" />
+                        Listen
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedSessionForChat(session)}
+                        className="border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
           </TabsContent>
-
-          <TabsContent value="my-sessions">
-            <Card className="bg-slate-900/50 border-slate-800">
-              <CardContent className="p-8 text-center">
-                <Music className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-                <p className="text-slate-400">Connect your wallet to view your sessions</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
+
+        {/* Chat Dialog */}
+        {selectedSessionForChat && (
+          <Dialog open={!!selectedSessionForChat} onOpenChange={() => setSelectedSessionForChat(null)}>
+            <DialogContent className="bg-slate-900 border-slate-800 max-w-4xl h-[600px] p-0">
+              <ChatRoom 
+                sessionId={selectedSessionForChat.id} 
+                sessionName={selectedSessionForChat.name}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <WalletProvider>
+      <AppContent />
+    </WalletProvider>
   );
 }
