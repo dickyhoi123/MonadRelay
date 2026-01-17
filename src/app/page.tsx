@@ -16,6 +16,8 @@ import { WalletButton } from '@/components/wallet-button';
 import { MusicEditor } from '@/components/music-editor';
 import { ChatRoom } from '@/components/chat-room';
 import type { Track, TrackType } from '@/components/music-editor';
+import { usePublicClient, useAccount } from 'wagmi';
+import { useCreateSession, useJoinAndCommit, waitForTransaction, getMultipleSessions } from '@/lib/contract-hooks';
 
 // 类型定义
 interface PianoNote {
@@ -41,50 +43,8 @@ interface Session {
   createdAt: number;
   editingTrackType?: TrackType; // 当前正在编辑的轨道类型（未保存）
   tracks?: Track[]; // 所有音轨数据
+  maxTracks?: number; // 最大轨道数
 }
-
-// 模拟数据
-const mockSessions: Session[] = [
-  {
-    id: 1,
-    name: 'Neon Dreams',
-    description: 'A collaborative synthwave masterpiece',
-    genre: 'Synthwave',
-    bpm: 120,
-    progress: 2,
-    totalTracks: 4,
-    currentTrackType: 'Synth',
-    isFinalized: false,
-    contributors: ['1234abcd5678efgh'],
-    createdAt: Date.now() - 3600000
-  },
-  {
-    id: 2,
-    name: 'Cyber Beats',
-    description: 'Dark techno vibes',
-    genre: 'Techno',
-    bpm: 140,
-    progress: 1,
-    totalTracks: 4,
-    currentTrackType: 'Bass',
-    isFinalized: false,
-    contributors: ['9876ijkl5432mnop'],
-    createdAt: Date.now() - 7200000
-  },
-  {
-    id: 3,
-    name: 'Future House',
-    description: 'Melodic progressive house',
-    genre: 'Progressive House',
-    bpm: 126,
-    progress: 4,
-    totalTracks: 4,
-    currentTrackType: 'Vocal',
-    isFinalized: true,
-    contributors: ['1111222233334444', '5555666677778888', 'aaaabbbbccccdddd', 'eeeeffffgggghhhh'],
-    createdAt: Date.now() - 86400000
-  }
-];
 
 const trackTypes: TrackType[] = ['Drum', 'Bass', 'Synth', 'Vocal'];
 const trackColors: Record<TrackType, string> = {
@@ -96,12 +56,55 @@ const trackColors: Record<TrackType, string> = {
 
 function HomePage() {
   const { isConnected, address } = useWallet();
+  const publicClient = usePublicClient();
+  const { createSession } = useCreateSession();
+  const { joinAndCommit } = useJoinAndCommit();
+
   const [mounted, setMounted] = useState(false);
-  const [sessions, setSessions] = useState<Session[]>(mockSessions);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+    loadSessions();
   }, []);
+
+  // 从合约加载 Sessions
+  const loadSessions = async () => {
+    if (!publicClient) return;
+
+    setIsLoadingSessions(true);
+    try {
+      // 加载前10个Session ID
+      const sessionIds = Array.from({ length: 10 }, (_, i) => i + 1);
+      const contractSessions = await getMultipleSessions(publicClient, sessionIds);
+
+      // 转换为前端格式
+      const frontendSessions: Session[] = contractSessions.map(cs => ({
+        id: Number(cs.id),
+        name: cs.name,
+        description: cs.description,
+        genre: cs.genre,
+        bpm: cs.bpm,
+        progress: cs.progress,
+        totalTracks: cs.maxTracks,
+        currentTrackType: trackTypes[cs.progress] || 'Vocal',
+        isFinalized: cs.isFinalized,
+        contributors: cs.contributors,
+        createdAt: cs.createdAt,
+        tracks: [] // 可以从NFT解码获取，这里暂时为空
+      }));
+
+      // 只显示非空Session
+      const validSessions = frontendSessions.filter(s => s.name && s.id > 0);
+      setSessions(validSessions);
+    } catch (error) {
+      console.error('Failed to load sessions:', error);
+      setSessions([]);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showWalletDialog, setShowWalletDialog] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -112,9 +115,15 @@ function HomePage() {
     bpm: 120,
     maxTracks: 4
   });
-  const [loadingStates, setLoadingStates] = useState<{ [key: number]: boolean }>({});
+  const [loadingStates, setLoadingStates] = useState<{ [key: string | number]: boolean }>({});
   const [selectedSessionForChat, setSelectedSessionForChat] = useState<Session | null>(null);
   const [readonlySession, setReadonlySession] = useState<Session | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error' | 'info', message: string) => {
+    setToastMessage({ type, message });
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   const formatAddress = (addr: string) => {
     // 从 0x 后面开始显示，只显示2位
@@ -130,49 +139,92 @@ function HomePage() {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
-  const handleCreateSession = () => {
-    if (!newSession.name || !newSession.genre) return;
+  const handleCreateSession = async () => {
+    if (!isConnected || !address) {
+      setShowWalletDialog(true);
+      return;
+    }
 
-    const initialTrackType: TrackType = 'Drum';
-    const TRACK_COLORS: Record<TrackType, string> = {
-      Drum: '#3b82f6',
-      Bass: '#22c55e',
-      Synth: '#a855f7',
-      Vocal: '#ec4899',
-    };
+    if (!newSession.name || !newSession.genre) {
+      alert('Please fill in all required fields');
+      return;
+    }
 
-    // 初始化4个空轨道
-    const initialTracks: Track[] = trackTypes.map((type, index) => ({
-      id: `${Date.now()}-${index}`,
-      type,
-      name: `${type} Track`,
-      color: TRACK_COLORS[type],
-      clips: [],
-      volume: 80,
-      isMuted: false,
-      isSolo: false
-    }));
+    try {
+      setLoadingStates(prev => ({ ...prev, create: true }));
 
-    const session: Session = {
-      id: sessions.length + 1,
-      name: newSession.name,
-      description: newSession.description,
-      genre: newSession.genre,
-      bpm: newSession.bpm,
-      progress: 0,
-      totalTracks: newSession.maxTracks,
-      currentTrackType: initialTrackType,
-      isFinalized: false,
-      contributors: address ? [address] : [],
-      createdAt: Date.now(),
-      editingTrackType: initialTrackType, // 立即开始编辑
-      tracks: initialTracks
-    };
-    setSessions([session, ...sessions]);
-    setShowCreateDialog(false);
-    setNewSession({ name: '', description: '', genre: '', bpm: 120, maxTracks: 4 });
-    // 立即打开编辑器
-    setEditingSession(session);
+      // 调用合约创建 Session
+      const hash = await createSession(
+        newSession.name,
+        newSession.description,
+        newSession.genre,
+        newSession.bpm,
+        newSession.maxTracks
+      );
+
+      showToast('success', `Creating session... Transaction submitted. Hash: ${hash.substring(0, 10)}...`);
+
+      // 等待交易确认
+      if (publicClient) {
+        const receipt = await waitForTransaction(publicClient, hash);
+        console.log('Session created:', receipt);
+
+        // 重新加载 Sessions
+        await loadSessions();
+
+        // 查找刚创建的 Session
+        const newSessionData = sessions.find(s => s.name === newSession.name);
+        if (newSessionData) {
+          const TRACK_COLORS: Record<TrackType, string> = {
+            Drum: '#3b82f6',
+            Bass: '#22c55e',
+            Synth: '#a855f7',
+            Vocal: '#ec4899',
+          };
+
+          // 初始化4个空轨道
+          const initialTracks: Track[] = trackTypes.map((type, index) => ({
+            id: `${Date.now()}-${index}`,
+            type,
+            name: `${type} Track`,
+            color: TRACK_COLORS[type],
+            clips: [],
+            volume: 80,
+            isMuted: false,
+            isSolo: false
+          }));
+
+          const session: Session = {
+            id: newSessionData.id,
+            name: newSessionData.name,
+            description: newSessionData.description,
+            genre: newSessionData.genre,
+            bpm: newSessionData.bpm,
+            progress: 0,
+            totalTracks: newSessionData.maxTracks || 4,
+            maxTracks: newSessionData.maxTracks || 4,
+            currentTrackType: 'Drum',
+            isFinalized: false,
+            contributors: [address],
+            createdAt: Date.now(),
+            editingTrackType: 'Drum',
+            tracks: initialTracks
+          };
+
+          setSessions([session, ...sessions]);
+          setEditingSession(session);
+        }
+
+        setShowCreateDialog(false);
+        setNewSession({ name: '', description: '', genre: '', bpm: 120, maxTracks: 4 });
+        showToast('success', 'Session created successfully!');
+      }
+    } catch (error) {
+      console.error('Failed to create session:', error);
+      showToast('error', `Failed to create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, create: false }));
+    }
   };
 
   const handleJoinSession = (sessionId: number) => {
@@ -184,47 +236,37 @@ function HomePage() {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
 
+    // 检查是否已完成
+    if (session.isFinalized) {
+      alert('This session is already finalized');
+      return;
+    }
+
+    // 检查是否已满
+    if (session.progress >= session.totalTracks) {
+      alert('This session is already full');
+      return;
+    }
+
     // 检查是否已加入过
     const hasJoined = session.contributors.includes(address);
     if (hasJoined) {
       // 如果已经加入过，打开编辑器编辑当前需要完成的轨道
-      // 如果有未保存的 editingTrackType，继续编辑它
-      // 否则编辑 currentTrackType
       const trackTypeToEdit = session.editingTrackType || session.currentTrackType;
       const sessionWithEditing = { ...session, editingTrackType: trackTypeToEdit };
       setEditingSession(sessionWithEditing);
       return;
     }
 
-    // 检查会话是否已完成
-    if (session.isFinalized) {
-      return;
-    }
+    // 首次加入，添加到贡献者列表（本地状态）
+    const updatedSession = {
+      ...session,
+      contributors: [...session.contributors, address],
+      editingTrackType: session.currentTrackType
+    };
 
-    // 检查是否已满
-    if (session.progress >= session.totalTracks) {
-      return;
-    }
-
-    setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
-
-    setTimeout(() => {
-      // 创建新的会话状态 - 首次加入时只添加贡献者，不更新 progress
-      // progress 只在保存时更新
-      const updatedSession = {
-        ...session,
-        contributors: [...session.contributors, address],
-        editingTrackType: session.currentTrackType // 开始编辑当前轨道
-      };
-
-      // 更新会话列表
-      setSessions(prevSessions => prevSessions.map(s => s.id === sessionId ? updatedSession : s));
-
-      // 打开编辑器
-      setEditingSession(updatedSession);
-
-      setLoadingStates(prev => ({ ...prev, [sessionId]: false }));
-    }, 1000);
+    setSessions(prevSessions => prevSessions.map(s => s.id === sessionId ? updatedSession : s));
+    setEditingSession(updatedSession);
   };
 
   const handleEditorSave = (data: any) => {
@@ -296,6 +338,19 @@ function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950">
+      {/* Toast 通知 */}
+      {toastMessage && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg animate-in slide-in-from-right transition-all ${
+          toastMessage.type === 'success' ? 'bg-green-600 text-white' :
+          toastMessage.type === 'error' ? 'bg-red-600 text-white' :
+          'bg-blue-600 text-white'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{toastMessage.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <header className="mb-12 flex items-center justify-between">
@@ -359,78 +414,116 @@ function HomePage() {
                 Completed
               </TabsTrigger>
             </TabsList>
-            <Dialog open={showCreateDialog} onOpenChange={(open) => {
-              if (!isConnected && open) {
-                setShowWalletDialog(true);
-                return;
-              }
-              setShowCreateDialog(open);
-            }}>
-              <DialogTrigger asChild>
-                <Button className="bg-purple-600 hover:bg-purple-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Session
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="bg-slate-900 border-slate-800">
-                <DialogHeader>
-                  <DialogTitle className="text-white">Create New Session</DialogTitle>
-                  <DialogDescription className="text-slate-400">
-                    Start a new collaborative music project
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <div>
-                    <Label className="text-slate-300">Session Name</Label>
-                    <Input
-                      value={newSession.name}
-                      onChange={(e) => setNewSession({ ...newSession, name: e.target.value })}
-                      placeholder="Neon Dreams"
-                      className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-slate-300">Description</Label>
-                    <Input
-                      value={newSession.description}
-                      onChange={(e) => setNewSession({ ...newSession, description: e.target.value })}
-                      placeholder="A collaborative synthwave masterpiece"
-                      className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+            <div className="flex gap-2">
+              <Dialog open={showCreateDialog} onOpenChange={(open) => {
+                if (!isConnected && open) {
+                  setShowWalletDialog(true);
+                  return;
+                }
+                setShowCreateDialog(open);
+              }}>
+                <DialogTrigger asChild>
+                  <Button className="bg-purple-600 hover:bg-purple-700">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Session
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-slate-900 border-slate-800">
+                  <DialogHeader>
+                    <DialogTitle className="text-white">Create New Session</DialogTitle>
+                    <DialogDescription className="text-slate-400">
+                      Start a new collaborative music project
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
                     <div>
-                      <Label className="text-slate-300">Genre</Label>
-                      <Select value={newSession.genre} onValueChange={(value) => setNewSession({ ...newSession, genre: value })}>
-                        <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                          <SelectValue placeholder="Select genre" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-slate-800 border-slate-700">
-                          <SelectItem value="Synthwave">Synthwave</SelectItem>
-                          <SelectItem value="Techno">Techno</SelectItem>
-                          <SelectItem value="House">House</SelectItem>
-                          <SelectItem value="Drum&Bass">Drum & Bass</SelectItem>
-                          <SelectItem value="Lo-Fi">Lo-Fi</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-slate-300">BPM</Label>
+                      <Label className="text-slate-300">Session Name</Label>
                       <Input
-                        type="number"
-                        value={newSession.bpm}
-                        onChange={(e) => setNewSession({ ...newSession, bpm: parseInt(e.target.value) })}
-                        placeholder="120"
+                        value={newSession.name}
+                        onChange={(e) => setNewSession({ ...newSession, name: e.target.value })}
+                        placeholder="Neon Dreams"
                         className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
                       />
                     </div>
+                    <div>
+                      <Label className="text-slate-300">Description</Label>
+                      <Input
+                        value={newSession.description}
+                        onChange={(e) => setNewSession({ ...newSession, description: e.target.value })}
+                        placeholder="A collaborative synthwave masterpiece"
+                        className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-slate-300">Genre</Label>
+                        <Select value={newSession.genre} onValueChange={(value) => setNewSession({ ...newSession, genre: value })}>
+                          <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                            <SelectValue placeholder="Select genre" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-slate-800 border-slate-700">
+                            <SelectItem value="Synthwave">Synthwave</SelectItem>
+                            <SelectItem value="Techno">Techno</SelectItem>
+                            <SelectItem value="House">House</SelectItem>
+                            <SelectItem value="Drum&Bass">Drum & Bass</SelectItem>
+                            <SelectItem value="Lo-Fi">Lo-Fi</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-slate-300">BPM</Label>
+                        <Input
+                          type="number"
+                          value={newSession.bpm}
+                          onChange={(e) => setNewSession({ ...newSession, bpm: parseInt(e.target.value) || 120 })}
+                          min="60"
+                          max="200"
+                          className="bg-slate-800 border-slate-700 text-white"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowCreateDialog(false)}
+                        className="border-slate-600 text-slate-400"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleCreateSession}
+                        disabled={loadingStates.create || !newSession.name || !newSession.genre}
+                        className="bg-purple-600 hover:bg-purple-700"
+                      >
+                        {loadingStates.create ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          'Create Session'
+                        )}
+                      </Button>
+                    </DialogFooter>
                   </div>
-                  <Button onClick={handleCreateSession} disabled={!newSession.name || !newSession.genre} className="w-full bg-purple-600 hover:bg-purple-700">
-                    Create Session
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogContent>
+              </Dialog>
+              <Button
+                variant="outline"
+                onClick={loadSessions}
+                disabled={isLoadingSessions}
+                className="border-slate-600 text-slate-400"
+              >
+                {isLoadingSessions ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <>
+                    <Clock className="h-4 w-4 mr-2" />
+                    Refresh
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           <TabsContent value="active" className="space-y-6">

@@ -263,3 +263,47 @@ export async function waitForTransaction(
     throw error;
   }
 }
+
+/**
+ * 获取多个 Session 信息
+ */
+export async function getMultipleSessions(
+  publicClient: ReturnType<typeof usePublicClient>,
+  sessionIds: number[]
+) {
+  if (!publicClient) {
+    throw new Error('Public client not available');
+  }
+
+  const sessions = await Promise.allSettled(
+    sessionIds.map(async (sessionId) => {
+      const info = await publicClient.readContract({
+        address: CONTRACT_ADDRESSES.musicSession as `0x${string}`,
+        abi: MUSIC_SESSION_ABI,
+        functionName: 'getSessionInfo',
+        args: [BigInt(sessionId)]
+      });
+
+      return { sessionId, info };
+    })
+  );
+
+  // 过滤成功的请求
+  return sessions
+    .filter((result): result is PromiseFulfilledResult<{ sessionId: number; info: any }> => result.status === 'fulfilled')
+    .map(result => ({
+      id: result.value.info.id,
+      name: result.value.info.sessionName,
+      description: result.value.info.description,
+      genre: result.value.info.genre,
+      bpm: Number(result.value.info.bpm),
+      maxTracks: Number(result.value.info.maxTracks),
+      progress: Number(result.value.info.currentTrackIndex),
+      isFinalized: result.value.info.isFinalized,
+      contributors: result.value.info.contributors,
+      trackIds: result.value.info.trackIds,
+      trackFilledStatus: result.value.info.trackFilledStatus,
+      createdAt: Number(result.value.info.createdAt),
+      completedAt: Number(result.value.info.completedAt)
+    }));
+}

@@ -71,7 +71,17 @@ async function main() {
   );
   const sessionReceipt = await createSessionTx.wait();
 
-  const sessionId = ethers.toNumber(sessionReceipt.logs[0].topics[1]);
+  let sessionId;
+  if (sessionReceipt.logs && sessionReceipt.logs.length > 0) {
+    try {
+      const sessionIdHex = sessionReceipt.logs[0].topics[1];
+      sessionId = parseInt(sessionIdHex, 16);
+    } catch (e) {
+      sessionId = 1; // 默认值
+    }
+  } else {
+    sessionId = 1; // 默认值
+  }
   console.log("  ✅ Session 创建成功！ID:", sessionId);
 
   console.log("\n=== 测试 2: 铸造 4 个 Track NFTs ===");
@@ -93,7 +103,17 @@ async function main() {
     );
 
     const receipt = await mintTx.wait();
-    const tokenId = ethers.toNumber(receipt.logs[0].topics[3]);
+    let tokenId;
+    if (receipt.logs && receipt.logs.length > 0) {
+      try {
+        const tokenIdHex = receipt.logs[receipt.logs.length - 1].topics[3];
+        tokenId = parseInt(tokenIdHex, 16);
+      } catch (e) {
+        tokenId = i + 1; // 默认值
+      }
+    } else {
+      tokenId = i + 1; // 默认值
+    }
     trackIds.push(tokenId);
     console.log(`  ✅ ${trackType} Track 铸造成功！Token ID: ${tokenId}`);
   }

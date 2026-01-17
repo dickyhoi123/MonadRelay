@@ -55,6 +55,11 @@ export default function NFTDecoder() {
       return;
     }
 
+    if (!isConnected || !address) {
+      setError('Please connect your wallet to decode NFT from the contract');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setDecodedData(null);
@@ -62,65 +67,24 @@ export default function NFTDecoder() {
     try {
       const tokenIdNum = parseInt(tokenId);
 
-      // 优先尝试从合约读取真实数据
-      if (isConnected) {
-        try {
-          const musicData = await getMusicData(tokenIdNum);
+      // 从合约读取真实数据
+      try {
+        const musicData = await getMusicData(tokenIdNum);
 
-          if (!musicData || !musicData.encodedTracks) {
-            throw new Error('No music data found in this NFT');
-          }
-
-          // 验证数据有效性
-          if (!validateEncodedData(musicData.encodedTracks)) {
-            throw new Error('Invalid encoded music data');
-          }
-
-          // 解码 JSON 数据
-          const decoded = decodeJSONToTracks(musicData.encodedTracks);
-
-          if (!decoded) {
-            throw new Error('Failed to decode music data');
-          }
-
-          // 转换为前端格式
-          const tracks: DecodedTrack[] = Object.entries(decoded.tracks).map(([trackType, notes]) => ({
-            type: trackType,
-            notes: notes.map(encodedNoteToPianoNote)
-          }));
-
-          setDecodedData({
-            bpm: musicData.bpm,
-            totalSixteenthNotes: musicData.totalSixteenthNotes,
-            tracks
-          });
-
-          showToast('success', `Successfully decoded NFT from contract (Token ID: ${tokenIdNum})`);
-          setLoading(false);
-          return;
-        } catch (contractError: any) {
-          console.warn('Contract read failed, trying local storage:', contractError);
-          // 如果合约调用失败，继续尝试本地存储
+        if (!musicData || !musicData.encodedTracks) {
+          throw new Error('No music data found in this NFT. Please check the Token ID and try again.');
         }
-      }
 
-      // 如果合约读取失败或未连接钱包，尝试从 localStorage 读取
-      const mintedNFTs = JSON.parse(localStorage.getItem('mintedNFTs') || '[]');
-      const nftData = mintedNFTs.find((nft: any) => nft.tokenId === tokenIdNum);
-
-      if (nftData) {
-        // 使用本地存储的模拟数据
-        console.log('Using mock NFT data from local storage:', nftData);
-
-        if (!validateEncodedData(nftData.encodedTracks)) {
-          throw new Error('Invalid encoded music data');
+        // 验证数据有效性
+        if (!validateEncodedData(musicData.encodedTracks)) {
+          throw new Error('Invalid encoded music data. The NFT may be corrupted.');
         }
 
         // 解码 JSON 数据
-        const decoded = decodeJSONToTracks(nftData.encodedTracks);
+        const decoded = decodeJSONToTracks(musicData.encodedTracks);
 
         if (!decoded) {
-          throw new Error('Failed to decode music data');
+          throw new Error('Failed to decode music data. Please check the NFT format.');
         }
 
         // 转换为前端格式
@@ -130,15 +94,17 @@ export default function NFTDecoder() {
         }));
 
         setDecodedData({
-          bpm: nftData.bpm,
-          totalSixteenthNotes: nftData.totalSixteenthNotes,
+          bpm: musicData.bpm,
+          totalSixteenthNotes: musicData.totalSixteenthNotes,
           tracks
         });
 
-        showToast('info', `Decoded NFT from local storage (Token ID: ${tokenIdNum}). Connect wallet to use contract data.`);
-      } else {
-        // 两种方式都失败了
-        throw new Error(`No NFT found with Token ID ${tokenIdNum}. Please connect your wallet and ensure the NFT exists on the Hardhat Local network.`);
+        showToast('success', `Successfully decoded NFT from contract (Token ID: ${tokenIdNum})`);
+        setLoading(false);
+        return;
+      } catch (contractError: any) {
+        console.error('Contract read failed:', contractError);
+        throw new Error(`Failed to decode NFT from contract: ${contractError.message}. Please ensure you are connected to the correct network and the NFT exists.`);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to decode NFT');
