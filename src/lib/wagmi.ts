@@ -1,5 +1,4 @@
-import { createConfig, http } from 'wagmi';
-import { injected, walletConnect } from 'wagmi/connectors';
+import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 
 // 自定义 Monad Testnet 链配置
 export const monadTestnet = {
@@ -16,13 +15,9 @@ export const monadTestnet = {
 } as const;
 
 // 配置
-export const config = createConfig({
+export const config = getDefaultConfig({
+  appName: 'Monad Music',
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo',
   chains: [monadTestnet],
-  connectors: [
-    injected(),
-    walletConnect({ projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo' }),
-  ],
-  transports: {
-    [monadTestnet.id]: http(),
-  },
+  ssr: true, // Next.js 需要这个
 });
