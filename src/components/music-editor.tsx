@@ -4,11 +4,12 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Download, Trash2, Mic, Copy } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Download, Trash2, Music, Grid3x3, Copy } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
 type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
 type TrackId = string;
+type NoteType = 'C' | 'C#' | 'D' | 'D#' | 'E' | 'F' | 'F#' | 'G' | 'G#' | 'A' | 'A#' | 'B';
 
 interface AudioClip {
   id: string;
@@ -31,46 +32,216 @@ interface Track {
   isSolo: boolean;
 }
 
+// 预设免费音频素材
+const PRESET_AUDIO_CLIPS: Record<TrackType, Array<{ name: string; duration: number; url?: string }>> = {
+  Drum: [
+    { name: 'Kick Basic', duration: 0.5 },
+    { name: 'Snare Classic', duration: 0.4 },
+    { name: 'Hi-Hat Closed', duration: 0.1 },
+    { name: 'Hi-Hat Open', duration: 0.3 },
+    { name: 'Crash Cymbal', duration: 1.0 },
+  ],
+  Bass: [
+    { name: 'Bass House 1', duration: 2.0 },
+    { name: 'Bass Deep', duration: 1.5 },
+    { name: 'Sub Bass', duration: 3.0 },
+    { name: 'Bass Funk', duration: 2.5 },
+  ],
+  Synth: [
+    { name: 'Lead Pluck', duration: 1.0 },
+    { name: 'Pad Ambient', duration: 4.0 },
+    { name: 'Arpeggio C Major', duration: 2.0 },
+    { name: 'Synth Bass', duration: 1.5 },
+  ],
+  Vocal: [
+    { name: 'Vocal Chop A', duration: 0.5 },
+    { name: 'Vocal Chop E', duration: 0.5 },
+    { name: 'Ad-lib Yeah', duration: 0.3 },
+    { name: 'Spoken Phrase', duration: 3.0 },
+  ],
+};
+
+// 钢琴键盘音符
+const PIANO_NOTES: NoteType[] = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const NOTE_COLORS: Record<NoteType, string> = {
+  'C': '#ef4444',
+  'C#': '#f97316',
+  'D': '#eab308',
+  'D#': '#22c55e',
+  'E': '#14b8a6',
+  'F': '#06b6d4',
+  'F#': '#3b82f6',
+  'G': '#8b5cf6',
+  'G#': '#a855f7',
+  'A': '#d946ef',
+  'A#': '#ec4899',
+  'B': '#f43f5e',
+};
+
 interface TimelineProps {
   duration: number;
   currentTime: number;
   onSeek: (time: number) => void;
+  isDragging: boolean;
 }
 
-function Timeline({ duration, currentTime, onSeek }: TimelineProps) {
+function Timeline({ duration, currentTime, onSeek, isDragging }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
+  const [isSeeking, setIsSeeking] = useState(false);
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSeek = (e: MouseEvent) => {
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
     onSeek(percentage * duration);
   };
 
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    setIsSeeking(true);
+    handleSeek(e.nativeEvent);
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (isSeeking) {
+      handleSeek(e);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsSeeking(false);
+  };
+
+  useEffect(() => {
+    if (isSeeking) {
+      document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('mousemove', handleMouseMove);
+      return () => {
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('mousemove', handleMouseMove);
+      };
+    }
+  }, [isSeeking]);
+
   return (
-    <div className="relative w-full h-12 bg-slate-800 rounded-lg overflow-hidden cursor-pointer" ref={timelineRef} onClick={handleSeek}>
+    <div
+      ref={timelineRef}
+      className={`relative w-full h-16 bg-slate-800 rounded-xl overflow-hidden cursor-pointer select-none transition-all ${
+        isSeeking ? 'shadow-lg shadow-purple-500/20' : ''
+      }`}
+      onMouseDown={handleMouseDown}
+    >
+      {/* 网格线 */}
+      <div className="absolute inset-0">
+        {Array.from({ length: 18 }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-px bg-slate-700/50"
+            style={{ left: `${(i / 18) * 100}%` }}
+          />
+        ))}
+      </div>
+
       {/* 时间刻度 */}
-      <div className="absolute inset-0 flex items-center px-4">
-        {[0, 15, 30, 45, 60, 75, 90].map((t) => (
-          <div key={t} className="absolute text-xs text-slate-500" style={{ left: `${(t / 90) * 100}%` }}>
+      <div className="absolute inset-x-0 top-0 h-6 flex items-center px-4 bg-slate-900/50">
+        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90].map((t) => (
+          <div key={t} className="absolute text-xs text-slate-400 font-medium" style={{ left: `${(t / 90) * 100}%` }}>
             {t}s
           </div>
         ))}
       </div>
-      
-      {/* 播放进度条 */}
-      <div 
-        className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-600/30 to-transparent pointer-events-none"
+
+      {/* 播放进度背景 */}
+      <div
+        className={`absolute top-6 bottom-0 bg-gradient-to-r from-purple-600/20 via-purple-600/10 to-transparent pointer-events-none transition-all ${
+          isSeeking ? 'bg-purple-600/30' : ''
+        }`}
         style={{ width: `${(currentTime / duration) * 100}%` }}
       />
-      
+
       {/* 播放头 */}
-      <div 
-        className="absolute top-0 h-full w-0.5 bg-red-500 pointer-events-none"
+      <div
+        className={`absolute top-0 bottom-0 w-1 bg-red-500 pointer-events-none transition-all z-10 ${
+          isSeeking ? 'w-2 bg-red-400' : ''
+        }`}
         style={{ left: `${(currentTime / duration) * 100}%` }}
       >
-        <div className="absolute -top-1 -left-1.5 w-3 h-3 bg-red-500 rounded-full" />
+        <div className="absolute -top-0.5 -left-1 w-3 h-3 bg-red-500 rounded-full shadow-lg" />
+      </div>
+    </div>
+  );
+}
+
+// 钢琴键盘组件
+interface PianoKeyboardProps {
+  onNoteClick: (note: NoteType) => void;
+  disabled?: boolean;
+}
+
+function PianoKeyboard({ onNoteClick, disabled = false }: PianoKeyboardProps) {
+  return (
+    <div className="flex items-center justify-center gap-1 p-4 bg-slate-900 rounded-xl border border-slate-800">
+      {PIANO_NOTES.map((note) => {
+        const isBlackKey = note.includes('#');
+        return (
+          <button
+            key={note}
+            disabled={disabled}
+            onClick={() => onNoteClick(note)}
+            className={`relative transition-all duration-150 ${
+              isBlackKey
+                ? 'w-6 h-20 bg-slate-950 hover:bg-slate-800 active:bg-slate-700 -mx-3 z-10 rounded-b-md'
+                : 'w-8 h-32 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-b-md'
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            style={
+              !isBlackKey
+                ? { backgroundColor: '#f8fafc' }
+                : {}
+            }
+          >
+            {!isBlackKey && (
+              <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-xs font-bold text-slate-600">
+                {note}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// 预设音频片段选择器
+interface PresetClipsProps {
+  trackType: TrackType;
+  onAddPresetClip: (preset: { name: string; duration: number; url?: string }) => void;
+}
+
+function PresetClips({ trackType, onAddPresetClip }: PresetClipsProps) {
+  const presets = PRESET_AUDIO_CLIPS[trackType] || [];
+
+  if (presets.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+        <Music className="h-4 w-4" />
+        Preset Audio Clips
+      </h4>
+      <div className="grid grid-cols-2 gap-2">
+        {presets.map((preset, idx) => (
+          <Button
+            key={idx}
+            variant="outline"
+            onClick={() => onAddPresetClip(preset)}
+            className="h-auto py-3 border-slate-700 hover:border-purple-500 hover:bg-purple-600/10 transition-all text-left"
+          >
+            <div>
+              <div className="text-sm font-medium text-slate-200">{preset.name}</div>
+              <div className="text-xs text-slate-500">{preset.duration}s</div>
+            </div>
+          </Button>
+        ))}
       </div>
     </div>
   );
@@ -90,6 +261,7 @@ interface TrackLaneProps {
 function TrackLane({ track, currentTime, onClipMove, onClipDelete, onVolumeChange, onMuteToggle, onClipSelect, isSelected }: TrackLaneProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [draggingClip, setDraggingClip] = useState<{ clipId: string; startX: number; originalStartTime: number } | null>(null);
+  const [hoveredClip, setHoveredClip] = useState<string | null>(null);
 
   const handleMouseDown = (e: React.MouseEvent, clipId: string) => {
     if (!trackRef.current) return;
@@ -97,6 +269,7 @@ function TrackLane({ track, currentTime, onClipMove, onClipDelete, onVolumeChang
     if (!clip) return;
 
     e.stopPropagation();
+    e.preventDefault();
     setDraggingClip({
       clipId,
       startX: e.clientX,
@@ -107,13 +280,13 @@ function TrackLane({ track, currentTime, onClipMove, onClipDelete, onVolumeChang
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!draggingClip || !trackRef.current) return;
-    
+
     const rect = trackRef.current.getBoundingClientRect();
     const deltaX = e.clientX - draggingClip.startX;
-    const timePerPixel = 90 / rect.width; // 90秒总时长
+    const timePerPixel = 90 / rect.width;
     const deltaTime = deltaX * timePerPixel;
-    
-    const newStartTime = Math.max(0, Math.min(90, draggingClip.originalStartTime + deltaTime));
+
+    const newStartTime = Math.max(0, Math.min(90 - track.clips.find(c => c.id === draggingClip.clipId)!.duration, draggingClip.originalStartTime + deltaTime));
     onClipMove(track.id, draggingClip.clipId, newStartTime);
   };
 
@@ -123,9 +296,13 @@ function TrackLane({ track, currentTime, onClipMove, onClipDelete, onVolumeChang
 
   useEffect(() => {
     if (draggingClip) {
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'grabbing';
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
       return () => {
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
       };
@@ -135,30 +312,41 @@ function TrackLane({ track, currentTime, onClipMove, onClipDelete, onVolumeChang
   return (
     <div
       ref={trackRef}
-      className={`relative h-24 bg-slate-900/50 rounded-lg border-2 transition-all ${
-        isSelected ? 'border-purple-500' : 'border-slate-800'
+      className={`relative h-28 bg-slate-900/80 rounded-xl border-2 transition-all hover:border-slate-700 ${
+        isSelected ? 'border-purple-500 shadow-lg shadow-purple-500/20' : 'border-slate-800'
       }`}
       onMouseUp={handleMouseUp}
     >
+      {/* 网格线 */}
+      <div className="absolute inset-0 left-48 overflow-hidden opacity-20">
+        {Array.from({ length: 18 }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-px bg-slate-400"
+            style={{ left: `${(i / 18) * 100}%` }}
+          />
+        ))}
+      </div>
+
       {/* 播放进度背景 */}
-      <div 
-        className="absolute inset-y-0 left-0 bg-purple-600/10 pointer-events-none"
+      <div
+        className="absolute inset-y-0 left-48 bg-purple-600/10 pointer-events-none transition-all"
         style={{ width: `${(currentTime / 90) * 100}%` }}
       />
 
       {/* 轨道头部 */}
-      <div className="absolute left-0 top-0 bottom-0 w-48 bg-slate-800 border-r border-slate-700 p-3 flex flex-col justify-between z-10">
+      <div className="absolute left-0 top-0 bottom-0 w-56 bg-slate-800/90 backdrop-blur-sm border-r border-slate-700 p-4 flex flex-col justify-between z-10">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <div className={`w-3 h-3 rounded-full ${track.color}`} />
-            <span className="text-white font-medium text-sm">{track.name}</span>
+          <div className="flex items-center gap-2 mb-3">
+            <div className={`w-4 h-4 rounded-full ${track.color} shadow-lg`} />
+            <span className="text-white font-bold text-base">{track.name}</span>
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-2">
             <Button
               variant={track.isMuted ? "destructive" : "outline"}
               size="sm"
               onClick={() => onMuteToggle(track.id)}
-              className="h-6 text-xs px-2"
+              className={`h-7 text-xs px-3 ${track.isMuted ? '' : 'border-slate-600 hover:border-slate-500'}`}
             >
               M
             </Button>
@@ -166,59 +354,92 @@ function TrackLane({ track, currentTime, onClipMove, onClipDelete, onVolumeChang
               variant={track.isSolo ? "default" : "outline"}
               size="sm"
               onClick={() => {}} // Solo functionality
-              className="h-6 text-xs px-2"
+              className={`h-7 text-xs px-3 ${!track.isSolo ? 'border-slate-600 hover:border-slate-500' : ''}`}
             >
               S
             </Button>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Volume2 className="h-3 w-3 text-slate-400" />
+          <Volume2 className={`h-4 w-4 ${track.isMuted ? 'text-slate-600' : 'text-slate-400'}`} />
           <Slider
             value={[track.volume]}
             onValueChange={(value) => onVolumeChange(track.id, value[0])}
             max={100}
             className="flex-1"
           />
-          <span className="text-xs text-slate-400 w-8">{track.volume}%</span>
+          <span className="text-xs font-medium text-slate-400 w-10">{track.volume}%</span>
         </div>
       </div>
 
       {/* 音频片段区域 */}
-      <div className="absolute left-48 right-0 top-0 bottom-0">
-        {track.clips.map((clip) => (
-          <div
-            key={clip.id}
-            className={`absolute h-16 top-4 rounded-lg cursor-move border-2 transition-all ${
-              isSelected ? 'border-white shadow-lg shadow-purple-500/50' : 'border-transparent hover:border-slate-500'
-            }`}
-            style={{
-              left: `${(clip.startTime / 90) * 100}%`,
-              width: `${(clip.duration / 90) * 100}%`,
-              backgroundColor: `${clip.color}40`,
-              backdropFilter: 'blur(4px)'
-            }}
-            onMouseDown={(e) => handleMouseDown(e, clip.id)}
-          >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className={`w-full h-8 ${clip.color} rounded opacity-30`} />
-            </div>
-            <div className="absolute inset-0 flex items-center justify-between px-2">
-              <span className="text-xs font-medium text-white truncate">{clip.name}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClipDelete(track.id, clip.id);
-                }}
-                className="h-5 w-5 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/20"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
+      <div className="absolute left-56 right-0 top-0 bottom-0">
+        {track.clips.length === 0 ? (
+          <div className="absolute inset-4 border-2 border-dashed border-slate-700 rounded-lg flex items-center justify-center text-slate-600 text-sm">
+            Drag clips here or use presets
           </div>
-        ))}
+        ) : (
+          track.clips.map((clip) => {
+            const isDragging = draggingClip?.clipId === clip.id;
+            const isHovered = hoveredClip === clip.id;
+            return (
+              <div
+                key={clip.id}
+                className={`absolute h-20 top-4 rounded-lg cursor-grab active:cursor-grabbing border-2 transition-all shadow-lg ${
+                  isSelected ? 'border-white shadow-xl shadow-purple-500/30' : `border-${clip.color.replace('#', '')}-500/50`
+                } ${isDragging ? 'opacity-80 scale-105 shadow-2xl' : ''} ${isHovered ? 'scale-102' : ''}`}
+                style={{
+                  left: `${(clip.startTime / 90) * 100}%`,
+                  width: `${(clip.duration / 90) * 100}%`,
+                  backgroundColor: `${clip.color}60`,
+                  backdropFilter: 'blur(8px)',
+                  minWidth: '60px'
+                }}
+                onMouseDown={(e) => handleMouseDown(e, clip.id)}
+                onMouseEnter={() => setHoveredClip(clip.id)}
+                onMouseLeave={() => setHoveredClip(null)}
+              >
+                {/* 波形可视化 */}
+                <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-40">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`rounded-full ${clip.color.replace('#', '')}-400`}
+                      style={{
+                        width: '3px',
+                        height: `${30 + Math.random() * 40}%`,
+                        backgroundColor: clip.color
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* 文件名和删除按钮 */}
+                <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
+                  <span className="text-xs font-bold text-white drop-shadow-lg truncate max-w-[60%]">
+                    {clip.name}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClipDelete(track.id, clip.id);
+                    }}
+                    className="h-6 w-6 p-0 text-white/80 hover:text-white hover:bg-white/20 pointer-events-auto rounded-full"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                {/* 时间显示 */}
+                <div className="absolute bottom-1 left-2 text-[10px] text-white/70 font-mono">
+                  {clip.startTime.toFixed(1)}s
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -236,51 +457,88 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration] = useState(90);
-  const [tracks, setTracks] = useState<Track[]>([
-    {
-      id: '1',
-      type: 'Drum',
-      name: '🥁 Drum',
-      color: '#3b82f6',
-      clips: [],
-      volume: 80,
-      isMuted: false,
-      isSolo: false
-    },
-    {
-      id: '2',
-      type: 'Bass',
-      name: '🎸 Bass',
-      color: '#22c55e',
-      clips: [],
-      volume: 80,
-      isMuted: false,
-      isSolo: false
-    },
-    {
-      id: '3',
-      type: 'Synth',
-      name: '🎹 Synth',
-      color: '#a855f7',
-      clips: [],
-      volume: 80,
-      isMuted: false,
-      isSolo: false
-    },
-    {
-      id: '4',
-      type: 'Vocal',
-      name: '🎤 Vocal',
-      color: '#ec4899',
-      clips: [],
-      volume: 80,
-      isMuted: false,
-      isSolo: false
+  const [selectedNote, setSelectedNote] = useState<NoteType | null>(null);
+  const [tracks, setTracks] = useState<Track[]>(() => {
+    // 根据当前音轨类型添加默认音乐方块
+    const initialTracks: Track[] = [
+      {
+        id: '1',
+        type: 'Drum',
+        name: '🥁 Drum',
+        color: '#3b82f6',
+        clips: [],
+        volume: 80,
+        isMuted: false,
+        isSolo: false
+      },
+      {
+        id: '2',
+        type: 'Bass',
+        name: '🎸 Bass',
+        color: '#22c55e',
+        clips: [],
+        volume: 80,
+        isMuted: false,
+        isSolo: false
+      },
+      {
+        id: '3',
+        type: 'Synth',
+        name: '🎹 Synth',
+        color: '#a855f7',
+        clips: [],
+        volume: 80,
+        isMuted: false,
+        isSolo: false
+      },
+      {
+        id: '4',
+        type: 'Vocal',
+        name: '🎤 Vocal',
+        color: '#ec4899',
+        clips: [],
+        volume: 80,
+        isMuted: false,
+        isSolo: false
+      }
+    ];
+
+    // 为当前轨道添加默认音频片段
+    const targetTrackIndex = initialTracks.findIndex(t => t.type === trackType);
+    if (targetTrackIndex >= 0) {
+      const presets = PRESET_AUDIO_CLIPS[trackType] || [];
+      const targetTrack = initialTracks[targetTrackIndex];
+
+      // 添加2个默认音频片段
+      const defaultClips: AudioClip[] = [
+        {
+          id: `clip-${Date.now()}-1`,
+          name: presets[0]?.name || 'Default Clip 1',
+          startTime: 0,
+          duration: presets[0]?.duration || 2,
+          color: targetTrack.color
+        },
+        {
+          id: `clip-${Date.now()}-2`,
+          name: presets[1]?.name || 'Default Clip 2',
+          startTime: 4,
+          duration: presets[1]?.duration || 2,
+          color: targetTrack.color
+        }
+      ];
+
+      initialTracks[targetTrackIndex] = {
+        ...targetTrack,
+        clips: defaultClips
+      };
     }
-  ]);
+
+    return initialTracks;
+  });
+
   const [selectedClip, setSelectedClip] = useState<{ trackId: TrackId; clipId: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [showPresets, setShowPresets] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -305,7 +563,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
 
     const file = files[0];
     const url = URL.createObjectURL(file);
-    
+
     // 根据当前选中的音轨类型添加
     const targetTrack = tracks.find(t => t.type === trackType);
     if (!targetTrack) return;
@@ -314,18 +572,47 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
       id: `clip-${Date.now()}`,
       name: file.name,
       startTime: 0,
-      duration: 30, // 默认30秒，实际应该从文件读取
+      duration: 15, // 默认15秒
       color: targetTrack.color,
       file,
       url
     };
 
-    setUploadedFile(file);
-    setTracks(prev => prev.map(t => 
-      t.id === targetTrack.id 
+    setTracks(prev => prev.map(t =>
+      t.id === targetTrack.id
         ? { ...t, clips: [...t.clips, newClip] }
         : t
     ));
+  };
+
+  const handleAddPresetClip = (preset: { name: string; duration: number; url?: string }) => {
+    const targetTrack = tracks.find(t => t.type === trackType);
+    if (!targetTrack) return;
+
+    // 找到最后一个片段的结束时间，作为新片段的起始时间
+    const lastClip = targetTrack.clips[targetTrack.clips.length - 1];
+    const startTime = lastClip ? lastClip.startTime + lastClip.duration + 1 : 0;
+
+    const newClip: AudioClip = {
+      id: `clip-${Date.now()}`,
+      name: preset.name,
+      startTime,
+      duration: preset.duration,
+      color: targetTrack.color,
+      url: preset.url
+    };
+
+    setTracks(prev => prev.map(t =>
+      t.id === targetTrack.id
+        ? { ...t, clips: [...t.clips, newClip] }
+        : t
+    ));
+  };
+
+  const handleNoteClick = (note: NoteType) => {
+    setSelectedNote(note);
+    // 播放音符（这里可以添加Web Audio API逻辑）
+    setTimeout(() => setSelectedNote(null), 200);
   };
 
   const handleClipMove = (trackId: TrackId, clipId: string, newStartTime: number) => {
@@ -472,7 +759,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
 
         {/* 时间轴 */}
         <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-4 mb-6">
-          <Timeline duration={duration} currentTime={currentTime} onSeek={setCurrentTime} />
+          <Timeline duration={duration} currentTime={currentTime} onSeek={setCurrentTime} isDragging={false} />
         </div>
 
         {/* 轨道区域 */}
@@ -485,7 +772,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
               <span>Duration: 90s</span>
             </div>
           </div>
-          
+
           <div className="space-y-3">
             {tracks.map((track) => (
               <TrackLane
@@ -503,32 +790,94 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
           </div>
         </div>
 
-        {/* 工具提示 */}
-        {totalClips === 0 && (
-          <Card className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-purple-800">
-            <CardContent className="p-6 text-center">
-              <Upload className="h-16 w-16 text-purple-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">Start Creating</h3>
-              <p className="text-slate-400 mb-4">
-                Upload your audio file to begin editing. Drag clips on the timeline to arrange your track.
-              </p>
-              <div className="flex items-center justify-center gap-6 text-sm text-slate-500">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-purple-500/30 border-2 border-dashed border-purple-500" />
-                  <span>Drag to move</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Trash2 className="h-4 w-4" />
-                  <span>Click X to delete</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Volume2 className="h-4 w-4" />
-                  <span>Adjust volume per track</span>
-                </div>
+        {/* 双栏布局：预设音频 + 钢琴键盘 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* 预设音频选择器 */}
+          <Card className="bg-slate-900/50 backdrop-blur-sm border border-slate-800">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-white">Audio Library</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowPresets(!showPresets)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <Grid3x3 className="h-4 w-4" />
+                </Button>
               </div>
+              <CardDescription className="text-slate-400">
+                Add preset clips to your {trackType} track
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {showPresets && <PresetClips trackType={trackType} onAddPresetClip={handleAddPresetClip} />}
             </CardContent>
           </Card>
-        )}
+
+          {/* 钢琴键盘 */}
+          <Card className="bg-slate-900/50 backdrop-blur-sm border border-slate-800">
+            <CardHeader>
+              <CardTitle className="text-white">Virtual Piano</CardTitle>
+              <CardDescription className="text-slate-400">
+                Click keys to preview notes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PianoKeyboard onNoteClick={handleNoteClick} disabled={isSaving} />
+              {selectedNote && (
+                <div className="mt-3 text-center">
+                  <div
+                    className="inline-block px-4 py-2 rounded-lg text-white font-bold"
+                    style={{ backgroundColor: NOTE_COLORS[selectedNote] }}
+                  >
+                    Playing: {selectedNote}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* 快捷提示 */}
+        <Card className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-purple-800">
+          <CardContent className="p-6">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Music className="h-5 w-5" />
+              Quick Tips
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+              <div className="flex items-start gap-2 text-slate-300">
+                <div className="w-6 h-6 rounded bg-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-xs shrink-0">1</div>
+                <div>
+                  <p className="font-medium text-white">Drag & Drop</p>
+                  <p className="text-slate-400">Move clips by dragging</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 text-slate-300">
+                <div className="w-6 h-6 rounded bg-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-xs shrink-0">2</div>
+                <div>
+                  <p className="font-medium text-white">Presets</p>
+                  <p className="text-slate-400">Use preset audio clips</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 text-slate-300">
+                <div className="w-6 h-6 rounded bg-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-xs shrink-0">3</div>
+                <div>
+                  <p className="font-medium text-white">Piano</p>
+                  <p className="text-slate-400">Preview notes on keyboard</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 text-slate-300">
+                <div className="w-6 h-6 rounded bg-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-xs shrink-0">4</div>
+                <div>
+                  <p className="font-medium text-white">Timeline</p>
+                  <p className="text-slate-400">Click to seek position</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
