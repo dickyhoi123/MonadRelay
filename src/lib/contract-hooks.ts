@@ -3,11 +3,11 @@
  * 用于与 MonadRelay 合约交互
  */
 
-import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
+import { usePublicClient, useWalletClient, useAccount, useChainId } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 import { useCallback } from 'react';
 import {
-  CONTRACT_ADDRESSES,
+  getContractAddresses,
   TRACK_NFT_ABI,
   MUSIC_SESSION_ABI,
   MASTER_COMPOSITION_ABI
@@ -19,6 +19,7 @@ import {
 export function useMintTrackNFT() {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
+  const chainId = useChainId();
 
   const mintTrack = useCallback(async (
     trackType: number,
@@ -30,9 +31,12 @@ export function useMintTrackNFT() {
       throw new Error('Wallet not connected');
     }
 
+    // 根据当前网络获取合约地址
+    const addresses = getContractAddresses(chainId);
+
     try {
       const hash = await walletClient.writeContract({
-        address: CONTRACT_ADDRESSES.trackNFT as `0x${string}`,
+        address: addresses.trackNFT as `0x${string}`,
         abi: TRACK_NFT_ABI,
         functionName: 'mintTrackWithMusicData',
         args: [
@@ -59,15 +63,18 @@ export function useMintTrackNFT() {
  */
 export function useGetTrackMusicData() {
   const publicClient = usePublicClient();
+  const chainId = useChainId();
 
   const getMusicData = useCallback(async (tokenId: number) => {
     if (!publicClient) {
       throw new Error('Public client not available');
     }
 
+    const addresses = getContractAddresses(chainId);
+
     try {
       const data = await publicClient.readContract({
-        address: CONTRACT_ADDRESSES.trackNFT as `0x${string}`,
+        address: addresses.trackNFT as `0x${string}`,
         abi: TRACK_NFT_ABI,
         functionName: 'getMusicData',
         args: [BigInt(tokenId)]
@@ -82,7 +89,7 @@ export function useGetTrackMusicData() {
       console.error('Failed to get track music data:', error);
       throw error;
     }
-  }, [publicClient]);
+  }, [publicClient, chainId]);
 
   return { getMusicData };
 }
@@ -92,6 +99,7 @@ export function useGetTrackMusicData() {
  */
 export function useCreateSession() {
   const { data: walletClient } = useWalletClient();
+  const chainId = useChainId();
 
   const createSession = useCallback(async (
     sessionName: string,
@@ -106,7 +114,7 @@ export function useCreateSession() {
 
     try {
       const hash = await walletClient.writeContract({
-        address: CONTRACT_ADDRESSES.musicSession as `0x${string}`,
+        address: getContractAddresses(chainId).musicSession as `0x${string}`,
         abi: MUSIC_SESSION_ABI,
         functionName: 'createSession',
         args: [sessionName, description, genre, BigInt(bpm), BigInt(maxTracks)]
@@ -127,6 +135,7 @@ export function useCreateSession() {
  */
 export function useJoinAndCommit() {
   const { data: walletClient } = useWalletClient();
+  const chainId = useChainId();
 
   const joinAndCommit = useCallback(async (
     sessionId: number,
@@ -139,7 +148,7 @@ export function useJoinAndCommit() {
 
     try {
       const hash = await walletClient.writeContract({
-        address: CONTRACT_ADDRESSES.musicSession as `0x${string}`,
+        address: getContractAddresses(chainId).musicSession as `0x${string}`,
         abi: MUSIC_SESSION_ABI,
         functionName: 'joinAndCommit',
         args: [BigInt(sessionId), BigInt(trackId), trackType]
@@ -150,7 +159,7 @@ export function useJoinAndCommit() {
       console.error('Failed to join and commit:', error);
       throw error;
     }
-  }, [walletClient]);
+  }, [walletClient, chainId]);
 
   return { joinAndCommit };
 }
@@ -160,6 +169,7 @@ export function useJoinAndCommit() {
  */
 export function useGetSessionInfo() {
   const publicClient = usePublicClient();
+  const chainId = useChainId();
 
   const getSessionInfo = useCallback(async (sessionId: number) => {
     if (!publicClient) {
@@ -168,7 +178,7 @@ export function useGetSessionInfo() {
 
     try {
       const info = await publicClient.readContract({
-        address: CONTRACT_ADDRESSES.musicSession as `0x${string}`,
+        address: getContractAddresses(chainId).musicSession as `0x${string}`,
         abi: MUSIC_SESSION_ABI,
         functionName: 'getSessionInfo',
         args: [BigInt(sessionId)]
@@ -179,7 +189,7 @@ export function useGetSessionInfo() {
       console.error('Failed to get session info:', error);
       throw error;
     }
-  }, [publicClient]);
+  }, [publicClient, chainId]);
 
   return { getSessionInfo };
 }
@@ -189,6 +199,7 @@ export function useGetSessionInfo() {
  */
 export function useGetMasterInfo() {
   const publicClient = usePublicClient();
+  const chainId = useChainId();
 
   const getMasterInfo = useCallback(async (masterTokenId: number) => {
     if (!publicClient) {
@@ -197,7 +208,7 @@ export function useGetMasterInfo() {
 
     try {
       const info = await publicClient.readContract({
-        address: CONTRACT_ADDRESSES.masterComposition as `0x${string}`,
+        address: getContractAddresses(chainId).masterComposition as `0x${string}`,
         abi: MASTER_COMPOSITION_ABI,
         functionName: 'getCompositionInfo',
         args: [BigInt(masterTokenId)]
@@ -208,7 +219,7 @@ export function useGetMasterInfo() {
       console.error('Failed to get master info:', error);
       throw error;
     }
-  }, [publicClient]);
+  }, [publicClient, chainId]);
 
   return { getMasterInfo };
 }
@@ -218,6 +229,7 @@ export function useGetMasterInfo() {
  */
 export function useGetMasterMusicData() {
   const publicClient = usePublicClient();
+  const chainId = useChainId();
 
   const getMasterMusicData = useCallback(async (masterTokenId: number) => {
     if (!publicClient) {
@@ -226,7 +238,7 @@ export function useGetMasterMusicData() {
 
     try {
       const data = await publicClient.readContract({
-        address: CONTRACT_ADDRESSES.masterComposition as `0x${string}`,
+        address: getContractAddresses(chainId).masterComposition as `0x${string}`,
         abi: MASTER_COMPOSITION_ABI,
         functionName: 'getCompositionMusicData',
         args: [BigInt(masterTokenId)]
@@ -241,7 +253,7 @@ export function useGetMasterMusicData() {
       console.error('Failed to get master music data:', error);
       throw error;
     }
-  }, [publicClient]);
+  }, [publicClient, chainId]);
 
   return { getMasterMusicData };
 }
@@ -269,7 +281,8 @@ export async function waitForTransaction(
  */
 export async function getMultipleSessions(
   publicClient: ReturnType<typeof usePublicClient>,
-  sessionIds: number[]
+  sessionIds: number[],
+  chainId: number
 ) {
   if (!publicClient) {
     throw new Error('Public client not available');
@@ -278,7 +291,7 @@ export async function getMultipleSessions(
   const sessions = await Promise.allSettled(
     sessionIds.map(async (sessionId) => {
       const info = await publicClient.readContract({
-        address: CONTRACT_ADDRESSES.musicSession as `0x${string}`,
+        address: getContractAddresses(chainId).musicSession as `0x${string}`,
         abi: MUSIC_SESSION_ABI,
         functionName: 'getSessionInfo',
         args: [BigInt(sessionId)]

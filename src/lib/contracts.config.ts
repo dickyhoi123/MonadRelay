@@ -10,11 +10,11 @@ export const HARDHAT_ADDRESSES = {
   masterComposition: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'
 } as const;
 
-// Monad 测试网合约地址（部署后更新）
+// Monad 测试网合约地址（已部署）
 export const MONAD_TESTNET_ADDRESSES = {
-  trackNFT: '', // TODO: 部署后填入实际地址
-  musicSession: '', // TODO: 部署后填入实际地址
-  masterComposition: '' // TODO: 部署后填入实际地址
+  trackNFT: '0x673562A3De748C8E54Ea50C9b0D04139dAA0e7eE',
+  musicSession: '0xB44a4aE625dC9F7B4ceD910a4664501Df2707F9D',
+  masterComposition: '0x71B32E8E1Ec057E5888300FD34da5E0b23106e2f'
 } as const;
 
 // 当前默认使用 Hardhat 本地测试网

@@ -16,7 +16,7 @@ import { WalletButton } from '@/components/wallet-button';
 import { MusicEditor } from '@/components/music-editor';
 import { ChatRoom } from '@/components/chat-room';
 import type { Track, TrackType } from '@/components/music-editor';
-import { usePublicClient, useAccount } from 'wagmi';
+import { usePublicClient, useAccount, useChainId } from 'wagmi';
 import { useCreateSession, useJoinAndCommit, waitForTransaction, getMultipleSessions } from '@/lib/contract-hooks';
 
 // 类型定义
@@ -59,6 +59,7 @@ function HomePage() {
   const publicClient = usePublicClient();
   const { createSession } = useCreateSession();
   const { joinAndCommit } = useJoinAndCommit();
+  const chainId = useChainId();
 
   const [mounted, setMounted] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -77,7 +78,7 @@ function HomePage() {
     try {
       // 加载前10个Session ID
       const sessionIds = Array.from({ length: 10 }, (_, i) => i + 1);
-      const contractSessions = await getMultipleSessions(publicClient, sessionIds);
+      const contractSessions = await getMultipleSessions(publicClient, sessionIds, chainId);
 
       // 转换为前端格式
       const frontendSessions: Session[] = contractSessions.map(cs => ({
