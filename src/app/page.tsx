@@ -18,6 +18,7 @@ import { ChatRoom } from '@/components/chat-room';
 import type { Track, TrackType } from '@/components/music-editor';
 import { usePublicClient, useAccount, useChainId } from 'wagmi';
 import { useCreateSession, useJoinAndCommit, waitForTransaction, getMultipleSessions } from '@/lib/contract-hooks';
+import { getContractAddresses, MUSIC_SESSION_ABI } from '@/lib/contracts.config';
 
 // 类型定义
 interface PianoNote {
@@ -64,21 +65,58 @@ function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [totalSessionsOnChain, setTotalSessionsOnChain] = useState<number>(0);
 
   useEffect(() => {
     setMounted(true);
     loadSessions();
-  }, []);
+  }, [chainId]); // 当网络切换时重新加载sessions
 
-  // 从合约加载 Sessions
+  // 获取链上totalSessions数量
+  useEffect(() => {
+    const fetchTotalSessions = async () => {
+      if (!publicClient || !mounted) return;
+
+      try {
+        const total = await publicClient.readContract({
+          address: getContractAddresses(chainId).musicSession as `0x${string}`,
+          abi: MUSIC_SESSION_ABI,
+          functionName: 'totalSessions',
+          args: []
+        }) as bigint;
+
+        setTotalSessionsOnChain(Number(total));
+
+        // 更新页面显示
+        const totalElement = document.getElementById('totalSessions');
+        if (totalElement) {
+          totalElement.textContent = Number(total).toString();
+        }
+      } catch (error) {
+        console.error('[fetchTotalSessions] Error:', error);
+        const totalElement = document.getElementById('totalSessions');
+        if (totalElement) {
+          totalElement.textContent = 'Error';
+        }
+      }
+    };
+
+    fetchTotalSessions();
+  }, [publicClient, chainId, mounted]);
+
+  // 从合约加载 Sessions（返回加载的sessions）
   const loadSessions = async () => {
-    if (!publicClient) return;
+    if (!publicClient) return [];
 
     setIsLoadingSessions(true);
     try {
-      // 加载前10个Session ID
-      const sessionIds = Array.from({ length: 10 }, (_, i) => i + 1);
-      const contractSessions = await getMultipleSessions(publicClient, sessionIds, chainId);
+      console.log('[loadSessions] Starting to load sessions...');
+      console.log('[loadSessions] Chain ID:', chainId);
+      console.log('[loadSessions] Public client ready:', !!publicClient);
+
+      // 传入空数组，让getMultipleSessions自己根据totalSessions查询
+      const contractSessions = await getMultipleSessions(publicClient, [], chainId);
+      console.log('[loadSessions] Contract sessions returned:', contractSessions.length);
 
       // 转换为前端格式
       const frontendSessions: Session[] = contractSessions.map(cs => ({
@@ -96,12 +134,21 @@ function HomePage() {
         tracks: [] // 可以从NFT解码获取，这里暂时为空
       }));
 
-      // 只显示非空Session
+      // 详细日志：每个session的信息
+      frontendSessions.forEach(s => {
+        console.log(`[loadSessions] Session ${s.id}: name="${s.name}", hasName=${!!s.name}, finalized=${s.isFinalized}`);
+      });
+
+      // 只显示有名称的Session（防止显示空session）
       const validSessions = frontendSessions.filter(s => s.name && s.id > 0);
+      console.log('[loadSessions] Valid sessions with name:', validSessions.length);
+      console.log('[loadSessions] Final sessions list:', validSessions);
       setSessions(validSessions);
+      return validSessions;
     } catch (error) {
-      console.error('Failed to load sessions:', error);
+      console.error('[loadSessions] Failed to load sessions:', error);
       setSessions([]);
+      return [];
     } finally {
       setIsLoadingSessions(false);
     }
@@ -170,11 +217,11 @@ function HomePage() {
         const receipt = await waitForTransaction(publicClient, hash);
         console.log('Session created:', receipt);
 
-        // 重新加载 Sessions
-        await loadSessions();
+        // 重新加载 Sessions并获取返回值
+        const loadedSessions = await loadSessions();
 
-        // 查找刚创建的 Session
-        const newSessionData = sessions.find(s => s.name === newSession.name);
+        // 查找刚创建的 Session（使用返回的loadedSessions而不是state）
+        const newSessionData = loadedSessions.find(s => s.name === newSession.name);
         if (newSessionData) {
           const TRACK_COLORS: Record<TrackType, string> = {
             Drum: '#3b82f6',
@@ -379,13 +426,52 @@ function HomePage() {
           </div>
         </header>
 
+        {/* Debug Info - 临时显示，用于调试 */}
+        {mounted && (
+          <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+              <div>
+                <span className="text-slate-400">Chain ID:</span>
+                <span className="text-purple-400 font-mono ml-2">{chainId}</span>
+                <span className="text-slate-500 ml-2">
+                  {chainId === 31337 ? '(Hardhat)' : chainId === 10143 ? '(Monad Testnet)' : '(Unknown)'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400">Wallet Connected:</span>
+                <span className={isConnected ? "text-green-400" : "text-red-400"}>{isConnected ? " Yes" : " No"}</span>
+              </div>
+              <div>
+                <span className="text-slate-400">Total on Chain:</span>
+                <span className="text-yellow-400 font-mono ml-2" id="totalSessions">Loading...</span>
+              </div>
+              <div>
+                <span className="text-slate-400">Loaded Sessions:</span>
+                <span className="text-purple-400 font-mono ml-2">{sessions.length}</span>
+              </div>
+              <div>
+                <span className="text-slate-400">Public Client:</span>
+                <span className={publicClient ? "text-green-400" : "text-red-400"}>{publicClient ? " Ready" : " Not Ready"}</span>
+              </div>
+            </div>
+            {sessions.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-slate-700 text-sm">
+                <span className="text-slate-400">Session IDs:</span>
+                <span className="text-purple-400 font-mono ml-2">
+                  [{sessions.map(s => s.id).join(', ')}]
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
           {[
-            { label: 'Active Sessions', value: '12', icon: Play, color: 'text-blue-400' },
-            { label: 'Total Tracks', value: '48', icon: Music, color: 'text-purple-400' },
-            { label: 'Contributors', value: '156', icon: Users, color: 'text-pink-400' },
-            { label: 'Master NFTs', value: '23', icon: CheckCircle, color: 'text-green-400' }
+            { label: 'Active Sessions', value: String(sessions.filter(s => !s.isFinalized).length), icon: Play, color: 'text-blue-400' },
+            { label: 'Total Sessions', value: String(sessions.length), icon: Music, color: 'text-purple-400' },
+            { label: 'Contributors', value: String(sessions.reduce((acc, s) => acc + s.contributors.length, 0)), icon: Users, color: 'text-pink-400' },
+            { label: 'Completed', value: String(sessions.filter(s => s.isFinalized).length), icon: CheckCircle, color: 'text-green-400' }
           ].map((stat) => (
             <Card key={stat.label} className="bg-slate-900/50 border-slate-800">
               <CardContent className="p-6">
@@ -402,11 +488,14 @@ function HomePage() {
         </div>
 
         {/* Main Content */}
-        <Tabs defaultValue="active" className="mb-8">
+        <Tabs defaultValue="all" className="mb-8">
           <div className="flex items-center justify-between mb-6">
             <TabsList className="bg-slate-900/50 border-slate-800">
+              <TabsTrigger value="all" className="data-[state=active]:bg-purple-600">
+                All Sessions
+              </TabsTrigger>
               <TabsTrigger value="active" className="data-[state=active]:bg-purple-600">
-                Active Sessions
+                Active
               </TabsTrigger>
               <TabsTrigger value="participating" className="data-[state=active]:bg-purple-600">
                 Participating
@@ -526,6 +615,166 @@ function HomePage() {
               </Button>
             </div>
           </div>
+
+          <TabsContent value="all" className="space-y-6">
+            {!mounted ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {sessions.map((session) => (
+                <Card key={session.id} className={`bg-slate-900/50 border-slate-800 hover:border-purple-500 transition-all duration-300 ${session.isFinalized ? 'opacity-75' : ''}`}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-white text-xl">{session.name}</CardTitle>
+                        {session.isFinalized && (
+                          <Badge className="bg-purple-600">✓ Completed</Badge>
+                        )}
+                      </div>
+                      {!session.isFinalized && (
+                        <Badge variant="outline" className="border-purple-500 text-purple-400">
+                          {session.genre}
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="text-slate-400">
+                      {session.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Progress */}
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-slate-400">Progress</span>
+                        <span className="text-white font-medium">{session.progress}/{session.totalTracks}</span>
+                      </div>
+                      <Progress value={(session.progress / session.totalTracks) * 100} className="h-2" />
+                    </div>
+
+                    {/* Track Types */}
+                    <div className="flex gap-2">
+                      {trackTypes.map((track, idx) => {
+                        const isCompleted = idx < session.progress;
+                        const isCurrent = idx === session.progress;
+                        const isPending = idx > session.progress;
+                        const isEditing = session.editingTrackType === track;
+
+                        return (
+                          <div
+                            key={track}
+                            style={isEditing ? {
+                              background: 'linear-gradient(90deg, #9333ea, #ec4899, #9333ea)',
+                              backgroundSize: '200% 100%',
+                              animation: 'glow-pulse 3s ease-in-out infinite'
+                            } : {}}
+                            className={`flex-1 text-center py-2 rounded text-xs font-medium transition-all ${
+                              isCompleted ? `${trackColors[track]} text-white` :
+                              isCurrent ? 'bg-purple-600 text-white' :
+                              'bg-slate-800 text-slate-500'
+                            } ${isEditing ? 'text-white' : ''}`}
+                          >
+                            {track}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Session Info */}
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-400">{formatTime(session.createdAt)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Music className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-400">{session.bpm} BPM</span>
+                      </div>
+                    </div>
+
+                    {/* Contributors */}
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-slate-400" />
+                      <div className="flex -space-x-2">
+                        {session.contributors.slice(0, 3).map((contributor, idx) => (
+                          <div
+                            key={idx}
+                            className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold border-2 border-slate-900"
+                            title={contributor}
+                          >
+                            {formatAddress(contributor)}
+                          </div>
+                        ))}
+                        {session.contributors.length > 3 && (
+                          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white text-xs font-bold border-2 border-slate-900">
+                            +{session.contributors.length - 3}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      {session.isFinalized ? (
+                        <Button
+                          onClick={() => setReadonlySession(session)}
+                          disabled={!mounted || !isConnected}
+                          className="flex-1 bg-purple-600 hover:bg-purple-700"
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Listen
+                        </Button>
+                      ) : session.progress >= session.totalTracks ? (
+                        <Button
+                          onClick={() => setReadonlySession(session)}
+                          disabled={!mounted || !isConnected}
+                          variant="outline"
+                          className="flex-1 border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            onClick={() => handleJoinSession(session.id)}
+                            disabled={!mounted || !isConnected || loadingStates[session.id] || session.isFinalized || session.progress >= session.totalTracks}
+                            className="flex-1 bg-purple-600 hover:bg-purple-700"
+                          >
+                            {loadingStates[session.id] ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Joining...
+                              </>
+                            ) : hasJoinedSession(session) ? (
+                              <>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit {session.editingTrackType || session.currentTrackType}
+                              </>
+                            ) : (
+                              <>
+                                <Music className="h-4 w-4 mr-2" />
+                                Join & Upload
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setSelectedSessionForChat(session)}
+                            className="border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
 
           <TabsContent value="active" className="space-y-6">
             {!mounted ? (

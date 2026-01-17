@@ -91,6 +91,20 @@ export const MUSIC_SESSION_ABI = [
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "totalSessions",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getAllSessionIds",
+    "outputs": [{"name": "", "type": "uint256[]"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {"name": "sessionId", "type": "uint256"},
       {"name": "trackId", "type": "uint256"},
