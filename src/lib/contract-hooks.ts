@@ -406,3 +406,114 @@ export async function getMultipleSessions(
       };
     });
 }
+
+/**
+ * 铸造 Master Composition NFT
+ */
+export function useMintMasterNFT() {
+  const { data: walletClient } = useWalletClient();
+  const { address } = useAccount();
+  const chainId = useChainId();
+
+  const mintMaster = useCallback(async (
+    sessionId: number,
+    contributors: string[],
+    trackIds: number[],
+    bpm: number,
+    totalSixteenthNotes: number,
+    encodedTracks: string[]
+  ) => {
+    if (!walletClient || !address) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const addresses = getContractAddresses(chainId);
+      const hash = await walletClient.writeContract({
+        address: addresses.masterComposition as `0x${string}`,
+        abi: MASTER_COMPOSITION_ABI,
+        functionName: 'mintMasterWithData',
+        args: [
+          address as `0x${string}`,
+          BigInt(sessionId),
+          contributors as `0x${string}`[],
+          trackIds.map(id => BigInt(id)),
+          `ipfs://monad-master-${sessionId}`, // 简单的tokenURI
+          bpm,
+          totalSixteenthNotes,
+          encodedTracks.map(data => data as `0x${string}`)
+        ]
+      });
+
+      return hash;
+    } catch (error) {
+      console.error('Failed to mint master NFT:', error);
+      throw error;
+    }
+  }, [walletClient, address, chainId]);
+
+  return { mintMaster };
+}
+
+/**
+ * 获取Session对应的Master Token ID
+ */
+export function useGetSessionMasterToken() {
+  const publicClient = usePublicClient();
+  const chainId = useChainId();
+
+  const getSessionMasterToken = useCallback(async (sessionId: number) => {
+    if (!publicClient) {
+      throw new Error('Public client not available');
+    }
+
+    try {
+      const addresses = getContractAddresses(chainId);
+      const masterTokenId = await publicClient.readContract({
+        address: addresses.masterComposition as `0x${string}`,
+        abi: MASTER_COMPOSITION_ABI,
+        functionName: 'sessionToMasterToken',
+        args: [BigInt(sessionId)]
+      }) as bigint;
+
+      return Number(masterTokenId);
+    } catch (error) {
+      console.error('Failed to get session master token:', error);
+      throw error;
+    }
+  }, [publicClient, chainId]);
+
+  return { getSessionMasterToken };
+}
+
+/**
+ * 获取用户拥有的Master NFT数量
+ */
+export function useGetUserMasterNFTs() {
+  const publicClient = usePublicClient();
+  const { address } = useAccount();
+  const chainId = useChainId();
+
+  const getUserMasterNFTCount = useCallback(async () => {
+    if (!publicClient || !address) {
+      throw new Error('Public client or address not available');
+    }
+
+    try {
+      const addresses = getContractAddresses(chainId);
+      const balance = await publicClient.readContract({
+        address: addresses.masterComposition as `0x${string}`,
+        abi: MASTER_COMPOSITION_ABI,
+        functionName: 'balanceOf',
+        args: [address as `0x${string}`]
+      }) as bigint;
+
+      return Number(balance);
+    } catch (error) {
+      console.error('Failed to get user master NFT count:', error);
+      throw error;
+    }
+  }, [publicClient, address, chainId]);
+
+  return { getUserMasterNFTCount };
+}

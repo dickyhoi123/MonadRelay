@@ -17,7 +17,7 @@ import { MusicEditor } from '@/components/music-editor';
 import { ChatRoom } from '@/components/chat-room';
 import type { Track, TrackType } from '@/components/music-editor';
 import { usePublicClient, useAccount, useChainId } from 'wagmi';
-import { useCreateSession, useJoinAndCommit, waitForTransaction, getMultipleSessions } from '@/lib/contract-hooks';
+import { useCreateSession, useJoinAndCommit, waitForTransaction, getMultipleSessions, useMintMasterNFT, useGetSessionMasterToken } from '@/lib/contract-hooks';
 import { getContractAddresses, MUSIC_SESSION_ABI } from '@/lib/contracts.config';
 
 // 类型定义
@@ -45,6 +45,7 @@ interface Session {
   editingTrackType?: TrackType; // 当前正在编辑的轨道类型（未保存）
   tracks?: Track[]; // 所有音轨数据
   maxTracks?: number; // 最大轨道数
+  masterTokenId?: number; // Master NFT Token ID
 }
 
 const trackTypes: TrackType[] = ['Drum', 'Bass', 'Synth', 'Vocal'];
@@ -60,6 +61,8 @@ function HomePage() {
   const publicClient = usePublicClient();
   const { createSession } = useCreateSession();
   const { joinAndCommit } = useJoinAndCommit();
+  const { mintMaster } = useMintMasterNFT();
+  const { getSessionMasterToken } = useGetSessionMasterToken();
   const chainId = useChainId();
 
   const [mounted, setMounted] = useState(false);
@@ -459,6 +462,87 @@ function HomePage() {
     // 这里我们可以在 MusicEditor 组件中添加一个 prop 来处理
   };
 
+  const handleMintMasterNFT = async (session: Session) => {
+    if (!isConnected || !address) {
+      setShowWalletDialog(true);
+      return;
+    }
+
+    // 检查是否所有音轨都已完成
+    if (session.progress < session.totalTracks) {
+      alert(`Please complete all tracks first! Progress: ${session.progress}/${session.totalTracks}`);
+      return;
+    }
+
+    // 检查是否已经铸造过Master NFT
+    if (session.masterTokenId) {
+      alert(`Master NFT already minted! Token ID: ${session.masterTokenId}`);
+      return;
+    }
+
+    // 检查用户是否是贡献者
+    if (!session.contributors.includes(address)) {
+      alert('You are not a contributor to this session');
+      return;
+    }
+
+    try {
+      setLoadingStates(prev => ({ ...prev, [`mint-master-${session.id}`]: true }));
+
+      // 从Session的tracks中获取所有音轨的编码数据
+      if (!session.tracks || session.tracks.length === 0) {
+        throw new Error('No track data available');
+      }
+
+      // 收集所有音轨的编码数据
+      const encodedTracks = session.tracks.map(track => {
+        // 将track的clips编码为字符串
+        return JSON.stringify({
+          type: track.type,
+          clips: track.clips
+        });
+      });
+
+      // 获取最大的总音符数
+      const totalSixteenthNotes = Math.max(...session.tracks.map(t => t.clips.reduce((max, clip) => Math.max(max, clip.startTime + clip.duration), 0)));
+
+      // 调用铸造Master NFT
+      const hash = await mintMaster(
+        session.id,
+        session.contributors,
+        // 使用虚拟的trackIds（实际应该从合约获取）
+        Array.from({ length: session.contributors.length }, (_, i) => i + 1),
+        session.bpm,
+        totalSixteenthNotes,
+        encodedTracks
+      );
+
+      showToast('success', 'Master NFT minted successfully!');
+
+      // 更新Session的masterTokenId
+      setSessions(prevSessions =>
+        prevSessions.map(s =>
+          s.id === session.id ? { ...s, masterTokenId: session.contributors.indexOf(address) + 1 } : s
+        )
+      );
+    } catch (error) {
+      console.error('Failed to mint master NFT:', error);
+      showToast('error', `Failed to mint master NFT: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [`mint-master-${session.id}`]: false }));
+    }
+  };
+
+  const handlePlayMasterNFT = async (session: Session) => {
+    if (!session.masterTokenId) {
+      alert('Master NFT not yet minted');
+      return;
+    }
+
+    // 打开只读会话并播放
+    setReadonlySession(session);
+  };
+
   const hasJoinedSession = (session: Session) => {
     return !!(address && session.contributors.includes(address));
   };
@@ -826,59 +910,92 @@ function HomePage() {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-2">
-                      {session.isFinalized ? (
-                        <Button
-                          onClick={() => setReadonlySession(session)}
-                          disabled={!mounted || !isConnected}
-                          className="flex-1 bg-purple-600 hover:bg-purple-700"
-                        >
-                          <Play className="h-4 w-4 mr-2" />
-                          Listen
-                        </Button>
-                      ) : session.progress >= session.totalTracks ? (
-                        <Button
-                          onClick={() => setReadonlySession(session)}
-                          disabled={!mounted || !isConnected}
-                          variant="outline"
-                          className="flex-1 border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View
-                        </Button>
-                      ) : (
-                        <>
+                    <div className="flex flex-col gap-2">
+                      {/* Master NFT Badge */}
+                      {session.masterTokenId && (
+                        <div className="flex items-center justify-center gap-2 py-2 px-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg">
+                          <Gem className="h-4 w-4 text-white" />
+                          <span className="text-white text-sm font-medium">Master NFT # {session.masterTokenId}</span>
+                        </div>
+                      )}
+
+                      {/* Main Action Buttons */}
+                      <div className="flex gap-2">
+                        {session.isFinalized ? (
                           <Button
-                            onClick={() => handleJoinSession(session.id)}
-                            disabled={!mounted || !isConnected || loadingStates[session.id] || session.isFinalized || session.progress >= session.totalTracks}
+                            onClick={() => handlePlayMasterNFT(session)}
+                            disabled={!mounted || !isConnected}
                             className="flex-1 bg-purple-600 hover:bg-purple-700"
                           >
-                            {loadingStates[session.id] ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Joining...
-                              </>
-                            ) : hasJoinedSession(session) ? (
-                              <>
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit {session.editingTrackType || session.currentTrackType}
-                              </>
-                            ) : (
-                              <>
-                                <Music className="h-4 w-4 mr-2" />
-                                Join & Upload
-                              </>
+                            <Play className="h-4 w-4 mr-2" />
+                            {session.masterTokenId ? 'Play NFT' : 'Listen'}
+                          </Button>
+                        ) : session.progress >= session.totalTracks ? (
+                          <>
+                            {/* Mint Master NFT Button */}
+                            {!session.masterTokenId && (
+                              <Button
+                                onClick={() => handleMintMasterNFT(session)}
+                                disabled={!mounted || !isConnected || loadingStates[`mint-master-${session.id}`]}
+                                className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                              >
+                                {loadingStates[`mint-master-${session.id}`] ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Minting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Gem className="h-4 w-4 mr-2" />
+                                    Mint Master NFT
+                                  </>
+                                )}
+                              </Button>
                             )}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => setSelectedSessionForChat(session)}
-                            className="border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
-                          >
-                            <MessageSquare className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
+                            <Button
+                              onClick={() => setReadonlySession(session)}
+                              disabled={!mounted || !isConnected}
+                              variant="outline"
+                              className={`${session.masterTokenId ? 'flex-1' : ''} border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white`}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              onClick={() => handleJoinSession(session.id)}
+                              disabled={!mounted || !isConnected || loadingStates[session.id] || session.isFinalized || session.progress >= session.totalTracks}
+                              className="flex-1 bg-purple-600 hover:bg-purple-700"
+                            >
+                              {loadingStates[session.id] ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Joining...
+                                </>
+                              ) : hasJoinedSession(session) ? (
+                                <>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit {session.editingTrackType || session.currentTrackType}
+                                </>
+                              ) : (
+                                <>
+                                  <Music className="h-4 w-4 mr-2" />
+                                  Join & Upload
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => setSelectedSessionForChat(session)}
+                              className="border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+                            >
+                              <MessageSquare className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

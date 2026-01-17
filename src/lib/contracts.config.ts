@@ -160,6 +160,22 @@ export const MUSIC_SESSION_ABI = [
 // MasterComposition ABI
 export const MASTER_COMPOSITION_ABI = [
   {
+    "inputs": [
+      {"name": "to", "type": "address"},
+      {"name": "sessionId", "type": "uint256"},
+      {"name": "contributors", "type": "address[]"},
+      {"name": "trackIds", "type": "uint256[]"},
+      {"name": "_tokenURI", "type": "string"},
+      {"name": "bpm", "type": "uint8"},
+      {"name": "totalSixteenthNotes", "type": "uint16"},
+      {"name": "encodedTracks", "type": "bytes[]"}
+    ],
+    "name": "mintMasterWithData",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [{"name": "masterTokenId", "type": "uint256"}],
     "name": "getCompositionInfo",
     "outputs": [
@@ -173,6 +189,13 @@ export const MASTER_COMPOSITION_ABI = [
     "type": "function"
   },
   {
+    "inputs": [{"name": "sessionId", "type": "uint256"}],
+    "name": "sessionToMasterToken",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [{"name": "masterTokenId", "type": "uint256"}],
     "name": "getCompositionMusicData",
     "outputs": [
@@ -182,5 +205,30 @@ export const MASTER_COMPOSITION_ABI = [
     ],
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [{"name": "owner", "type": "address"}],
+    "name": "balanceOf",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "tokenId", "type": "uint256"}],
+    "name": "ownerOf",
+    "outputs": [{"name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "name": "masterTokenId", "type": "uint256"},
+      {"indexed": true, "name": "sessionId", "type": "uint256"},
+      {"indexed": false, "name": "contributors", "type": "address[]"},
+      {"indexed": false, "name": "trackIds", "type": "uint256[]"}
+    ],
+    "name": "MasterMinted",
+    "type": "event"
   }
 ] as const;
