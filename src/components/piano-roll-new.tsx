@@ -659,6 +659,13 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                   {formatTime(currentPosition)}
                 </div>
                 <Button
+                  onClick={() => onSave?.(notes)}
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                >
+                  Save to Track
+                </Button>
+                <Button
                   variant="outline"
                   size="sm"
                   onClick={onClose}
@@ -732,7 +739,16 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                 {/* 时间线网格 - 使用绝对定位 */}
                 <div className="absolute inset-0">
                   {/* 钢琴键占位 */}
-                  <div className="absolute left-0 top-0 bottom-0 bg-slate-800 border-r border-slate-600" style={{ width: `${PIANO_KEY_WIDTH}px` }} />
+                  <div 
+                    className="absolute left-0 top-0 bottom-0 bg-slate-800" 
+                    style={{ width: `${PIANO_KEY_WIDTH}px` }} 
+                  />
+                  
+                  {/* 分隔线 */}
+                  <div 
+                    className="absolute top-0 bottom-0 border-r border-slate-600"
+                    style={{ left: `${PIANO_KEY_WIDTH}px` }}
+                  />
                   
                   {/* 网格线区域 */}
                   <div className="absolute" style={{ left: `${PIANO_KEY_WIDTH}px`, right: 0, top: 0, bottom: 0 }}>
@@ -791,9 +807,14 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
               <div className="flex-1 flex overflow-hidden relative">
                 {/* Piano Keys */}
                 <div 
-                  className="bg-slate-800 border-r border-slate-600 overflow-hidden flex-shrink-0" 
+                  className="bg-slate-800 overflow-hidden flex-shrink-0 relative" 
                   style={{ width: `${PIANO_KEY_WIDTH}px` }}
                 >
+                  {/* 分隔线 */}
+                  <div 
+                    className="absolute right-0 top-0 bottom-0 border-r border-slate-600"
+                  />
+                  
                   <div className="relative h-full">
                     {OCTAVES.map((octave) => (
                       PIANO_NOTES.map((note, noteIndex) => {
