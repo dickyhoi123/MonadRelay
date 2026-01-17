@@ -168,34 +168,25 @@ function HomePage() {
     if (session.progress >= session.totalTracks) {
       return;
     }
-    
-    setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
-    
-    setTimeout(() => {
-      setSessions(sessions.map(s => {
-        if (s.id === sessionId) {
-          return {
-            ...s,
-            progress: s.progress + 1,
-            currentTrackType: trackTypes[s.progress + 1] || s.currentTrackType,
-            contributors: [...s.contributors, address],
-            isFinalized: s.progress + 1 >= s.totalTracks
-          };
-        }
-        return s;
-      }));
 
-      // 更新会话后立即打开编辑器
-      const updatedSession = sessions.find(s => s.id === sessionId);
-      if (updatedSession) {
-        setEditingSession({
-          ...updatedSession,
-          progress: updatedSession.progress + 1,
-          contributors: [...updatedSession.contributors, address],
-          currentTrackType: trackTypes[updatedSession.progress] || updatedSession.currentTrackType
-        });
-      }
-      
+    setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
+
+    setTimeout(() => {
+      // 创建新的会话状态
+      const updatedSession = {
+        ...session,
+        progress: session.progress + 1,
+        currentTrackType: trackTypes[session.progress + 1] || session.currentTrackType,
+        contributors: [...session.contributors, address],
+        isFinalized: session.progress + 1 >= session.totalTracks
+      };
+
+      // 更新会话列表
+      setSessions(prevSessions => prevSessions.map(s => s.id === sessionId ? updatedSession : s));
+
+      // 打开编辑器
+      setEditingSession(updatedSession);
+
       setLoadingStates(prev => ({ ...prev, [sessionId]: false }));
     }, 1000);
   };

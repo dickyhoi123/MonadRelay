@@ -295,7 +295,7 @@ export function PianoRoll({ isOpen, onClose, trackId, trackName, onSave, initial
           {/* Piano Roll Grid */}
           <div className="flex-1 flex overflow-hidden">
             {/* Piano Keys */}
-            <div className="w-16 bg-slate-900/80 border-r border-slate-800 overflow-hidden">
+            <div className="w-20 bg-slate-900/80 border-r border-slate-800 overflow-hidden">
               <div className="relative">
                 {OCTAVES.reverse().map((octave) => (
                   <div key={octave} className="relative">
@@ -305,7 +305,7 @@ export function PianoRoll({ isOpen, onClose, trackId, trackName, onSave, initial
                         <div
                           key={`${octave}-${note}`}
                           className={`relative ${
-                            isBlackKey ? 'h-6 w-10 -ml-2 z-10' : 'h-10 w-full'
+                            isBlackKey ? 'h-8 w-14 -ml-3 z-10' : 'h-12 w-full'
                           }`}
                         >
                           <button

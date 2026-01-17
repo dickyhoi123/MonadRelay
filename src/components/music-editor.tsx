@@ -433,6 +433,15 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                   {formatTime(currentBeat)} / {formatTime(TOTAL_BEATS)}
                 </div>
               </div>
+
+              {/* 钢琴帘切换按钮 - 显眼位置 */}
+              <Button
+                onClick={() => handleOpenPianoRoll(tracks.find(t => t.type === trackType)?.id || '')}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg"
+              >
+                <Piano className="h-5 w-5 mr-2" />
+                Open Piano Roll
+              </Button>
             </div>
 
             <div className="flex items-center gap-3">
@@ -581,7 +590,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                         variant="outline"
                         size="sm"
                         onClick={() => handleOpenPianoRoll(track.id)}
-                        className="w-full border-purple-500 text-purple-400 hover:bg-purple-600/10 mb-2"
+                        className="w-full border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white mb-2 font-semibold"
                       >
                         <Piano className="h-4 w-4 mr-2" />
                         Piano Roll
@@ -600,7 +609,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                   </div>
 
                   {/* 音频片段区域 */}
-                  <div className="flex-1 relative h-32 bg-slate-950 min-h-32">
+                  <div className="flex-1 relative h-40 bg-slate-950 min-h-40">
                     {/* 网格线 */}
                     <div className="absolute inset-0 pointer-events-none">
                       {Array.from({ length: TOTAL_BEATS + 1 }).map((_, i) => (
@@ -622,7 +631,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                       return (
                         <div
                           key={clip.id}
-                          className={`absolute h-20 top-4 rounded-lg cursor-move border-2 transition-all shadow-lg ${
+                          className={`absolute h-28 top-6 rounded-lg cursor-move border-2 transition-all shadow-lg ${
                             isSelected ? 'border-white shadow-xl shadow-purple-500/30' : `border-transparent`
                           } ${isDragging ? 'opacity-80 scale-105 shadow-2xl' : 'hover:border-slate-500'}`}
                           style={{
@@ -635,14 +644,14 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                           onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)}
                         >
                           {/* 波形可视化 */}
-                          <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-40">
-                            {Array.from({ length: 12 }).map((_, i) => (
+                          <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-40 px-2">
+                            {Array.from({ length: 20 }).map((_, i) => (
                               <div
                                 key={i}
                                 className="rounded-full"
                                 style={{
-                                  width: '3px',
-                                  height: `${30 + Math.random() * 40}%`,
+                                  width: '4px',
+                                  height: `${40 + Math.random() * 50}%`,
                                   backgroundColor: clip.color
                                 }}
                               />
@@ -698,7 +707,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
 
                     {/* 空轨道提示 */}
                     {track.clips.length === 0 && (
-                      <div className="absolute inset-4 border-2 border-dashed border-slate-700 rounded-lg flex items-center justify-center text-slate-600 text-sm">
+                      <div className="absolute inset-6 border-2 border-dashed border-slate-700 rounded-lg flex items-center justify-center text-slate-600 text-sm">
                         Drop audio files here or click Piano Roll to create notes
                       </div>
                     )}
