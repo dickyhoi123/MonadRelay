@@ -203,22 +203,48 @@ contract MusicSession is Ownable, ReentrancyGuard {
         Session storage session = sessions[sessionId];
         session.isFinalized = true;
         session.completedAt = block.timestamp;
-        
+
         // 准备 Master NFT 元数据
         string memory masterURI = string(abi.encodePacked(
             "ipfs://",
             _generateMasterMetadata(sessionId)
         ));
-        
-        // 铸造 Master NFT（传给第一个贡献者）
-        uint256 masterTokenId = masterComposition.mintMaster(
+
+        // 收集所有音轨的音乐数据
+        bytes[] memory encodedTracks = new bytes[](session.trackIds.length);
+        uint8 firstBpm = 0;
+        uint16 maxTotalSixteenthNotes = 0;
+
+        for (uint256 i = 0; i < session.trackIds.length; i++) {
+            (uint8 bpm, uint16 totalSixteenthNotes, string memory encodedTrackData) =
+                trackNFT.getMusicData(session.trackIds[i]);
+
+            // 存储编码数据
+            encodedTracks[i] = bytes(encodedTrackData);
+
+            // 记录第一个 BPM（所有音轨应该有相同的 BPM）
+            if (i == 0) {
+                firstBpm = bpm;
+            }
+
+            // 记录最大的 totalSixteenthNotes
+            if (totalSixteenthNotes > maxTotalSixteenthNotes) {
+                maxTotalSixteenthNotes = totalSixteenthNotes;
+            }
+        }
+
+        // 直接使用完整的音乐数据铸造 Master NFT
+        uint256 masterTokenId = masterComposition.mintMasterWithData(
             session.contributors[0],
             sessionId,
             session.contributors,
             session.trackIds,
-            masterURI
+            masterURI,
+            firstBpm,
+            maxTotalSixteenthNotes,
+            encodedTracks
         );
-        
+
         emit SessionFinalized(
             sessionId,
             masterTokenId,

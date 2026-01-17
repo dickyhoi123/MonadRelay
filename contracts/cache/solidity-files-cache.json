@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/workspace/projects/contracts/src/MasterComposition.sol": {
-      "lastModificationDate": 1768638027079,
-      "contentHash": "2d286e7042bd5837b663559b14ac095a",
+      "lastModificationDate": 1768640023499,
+      "contentHash": "868f48a3e6281b06b37183b71dc43dfa",
       "sourceName": "src/MasterComposition.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -823,8 +823,8 @@
       "artifacts": []
     },
     "/workspace/projects/contracts/src/MusicSession.sol": {
-      "lastModificationDate": 1768638027079,
-      "contentHash": "30634ac54518eb40ae664be2b0dc929c",
+      "lastModificationDate": 1768640005706,
+      "contentHash": "546fdb06317881e3a69a510ddf302576",
       "sourceName": "src/MusicSession.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -865,8 +865,8 @@
       ]
     },
     "/workspace/projects/contracts/src/TrackNFT.sol": {
-      "lastModificationDate": 1768638027079,
-      "contentHash": "e144a3ddb142be4be4569e2226e8c6b5",
+      "lastModificationDate": 1768639965383,
+      "contentHash": "cf06db010fbb407e7abbe043a48ca429",
       "sourceName": "src/TrackNFT.sol",
       "solcConfig": {
         "version": "0.8.20",

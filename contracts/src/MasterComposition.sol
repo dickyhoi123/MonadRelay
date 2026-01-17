@@ -72,6 +72,68 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
     constructor() ERC721("Monad Master Composition", "MMASTER") Ownable(msg.sender) {}
 
     /**
+     * @dev 铸造 Master NFT 并存储完整的音乐数据（由 MusicSession 合约调用）
+     * @param to 接收者地址
+     * @param sessionId Session ID
+     * @param contributors 贡献者地址列表
+     * @param trackIds 关联的 Track NFT ID 列表
+     * @param _tokenURI 元数据 URI
+     * @param bpm BPM
+     * @param totalSixteenthNotes 总16分音符数
+     * @param encodedTracks 所有音轨的编码数据数组
+     */
+    function mintMasterWithData(
+        address to,
+        uint256 sessionId,
+        address[] memory contributors,
+        uint256[] memory trackIds,
+        string memory _tokenURI,
+        uint8 bpm,
+        uint16 totalSixteenthNotes,
+        bytes[] memory encodedTracks
+    ) external nonReentrant returns (uint256) {
+        require(contributors.length == trackIds.length, "Length mismatch");
+        require(contributors.length > 0, "No contributors");
+        require(sessionToMasterToken[sessionId] == 0, "Already minted");
+        require(trackIds.length <= 4, "Too many tracks"); // 限制最多 4 条音轨
+        require(trackIds.length == encodedTracks.length, "Tracks and data length mismatch");
+
+        uint256 masterTokenId = _nextTokenId++;
+
+        _safeMint(to, masterTokenId);
+        _setTokenURI(masterTokenId, _tokenURI);
+
+        // 存储元数据
+        compositionMetadata[masterTokenId] = CompositionMetadata({
+            sessionId: sessionId,
+            contributors: contributors,
+            trackIds: trackIds,
+            createdAt: block.timestamp,
+            isMinted: true,
+            totalRevenue: 0
+        });
+
+        // 存储完整的音乐数据
+        compositionMusicData[masterTokenId] = CompositionMusicData({
+            bpm: bpm,
+            totalSixteenthNotes: totalSixteenthNotes,
+            encodedTracks: encodedTracks
+        });
+
+        // 记录 Session 映射
+        sessionToMasterToken[sessionId] = masterTokenId;
+
+        // 记录贡献者参与的作品
+        for (uint256 i = 0; i < contributors.length; i++) {
+            contributorCompositions[contributors[i]].push(masterTokenId);
+        }
+
+        emit MasterMinted(masterTokenId, sessionId, contributors, trackIds);
+
+        return masterTokenId;
+    }
+
+    /**
      * @dev 铸造 Master NFT（由 MusicSession 合约调用）
      * @param to 接收者地址（可以是任意贡献者或 DAO）
      * @param sessionId Session ID
@@ -86,10 +148,44 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
         uint256[] memory trackIds,
         string memory _tokenURI
     ) external nonReentrant returns (uint256) {
+        return _mintMasterWithMusicData(
+            to,
+            sessionId,
+            contributors,
+            trackIds,
+            _tokenURI,
+            120, // 默认 BPM
+            0, // 默认 totalSixteenthNotes
+            new bytes[](trackIds.length) // 默认空音轨数据
+        );
+    }
+
+    /**
+     * @dev 铸造 Master NFT 并存储完整的音乐数据
+     * @param to 接收者地址
+     * @param sessionId Session ID
+     * @param contributors 贡献者地址列表
+     * @param trackIds 关联的 Track NFT ID 列表
+     * @param _tokenURI 元数据 URI
+     * @param bpm BPM
+     * @param totalSixteenthNotes 总16分音符数
+     * @param encodedTracks 所有音轨的编码数据数组
+     */
+    function _mintMasterWithMusicData(
+        address to,
+        uint256 sessionId,
+        address[] memory contributors,
+        uint256[] memory trackIds,
+        string memory _tokenURI,
+        uint8 bpm,
+        uint16 totalSixteenthNotes,
+        bytes[] memory encodedTracks
+    ) private nonReentrant returns (uint256) {
         require(contributors.length == trackIds.length, "Length mismatch");
         require(contributors.length > 0, "No contributors");
         require(sessionToMasterToken[sessionId] == 0, "Already minted");
         require(trackIds.length <= 4, "Too many tracks"); // 限制最多 4 条音轨
+        require(trackIds.length == encodedTracks.length, "Tracks and data length mismatch");
         
         uint256 masterTokenId = _nextTokenId++;
         
@@ -106,11 +202,11 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
             totalRevenue: 0
         });
         
-        // 初始化空的音乐数据
+        // 存储完整的音乐数据
         compositionMusicData[masterTokenId] = CompositionMusicData({
-            bpm: 120, // 默认 BPM
-            totalSixteenthNotes: 0,
-            encodedTracks: new bytes[](trackIds.length)
+            bpm: bpm,
+            totalSixteenthNotes: totalSixteenthNotes,
+            encodedTracks: encodedTracks
         });
         
         // 记录 Session 映射
@@ -213,6 +309,29 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
             metadata.createdAt,
             metadata.totalRevenue
         );
+    }
+
+    /**
+     * @dev 设置组合的音乐数据（由 MusicSession 合约调用）
+     * @param masterTokenId Master Token ID
+     * @param bpm BPM
+     * @param totalSixteenthNotes 总16分音符数
+     * @param encodedTracks 所有音轨的编码数据数组
+     */
+    function setCompositionMusicData(
+        uint256 masterTokenId,
+        uint8 bpm,
+        uint16 totalSixteenthNotes,
+        bytes[] memory encodedTracks
+    ) external {
+        require(compositionMetadata[masterTokenId].isMinted, "Not minted");
+        require(encodedTracks.length == compositionMetadata[masterTokenId].trackIds.length, "Tracks length mismatch");
+
+        compositionMusicData[masterTokenId] = CompositionMusicData({
+            bpm: bpm,
+            totalSixteenthNotes: totalSixteenthNotes,
+            encodedTracks: encodedTracks
+        });
     }
 
     /**

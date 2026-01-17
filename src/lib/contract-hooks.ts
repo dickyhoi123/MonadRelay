@@ -214,6 +214,39 @@ export function useGetMasterInfo() {
 }
 
 /**
+ * 获取 Master NFT 的完整音乐数据（包含所有音轨）
+ */
+export function useGetMasterMusicData() {
+  const publicClient = usePublicClient();
+
+  const getMasterMusicData = useCallback(async (masterTokenId: number) => {
+    if (!publicClient) {
+      throw new Error('Public client not available');
+    }
+
+    try {
+      const data = await publicClient.readContract({
+        address: CONTRACT_ADDRESSES.masterComposition as `0x${string}`,
+        abi: MASTER_COMPOSITION_ABI,
+        functionName: 'getCompositionMusicData',
+        args: [BigInt(masterTokenId)]
+      }) as unknown as readonly [bigint, bigint, readonly bigint[]];
+
+      return {
+        bpm: Number(data[0]),
+        totalSixteenthNotes: Number(data[1]),
+        encodedTracks: data[2].map(track => track.toString())
+      };
+    } catch (error) {
+      console.error('Failed to get master music data:', error);
+      throw error;
+    }
+  }, [publicClient]);
+
+  return { getMasterMusicData };
+}
+
+/**
  * 等待交易确认
  */
 export async function waitForTransaction(

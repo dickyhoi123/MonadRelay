@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
-import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X, ArrowLeft, Eye, Code } from 'lucide-react';
+import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X, ArrowLeft, Eye, Code, Gem } from 'lucide-react';
 import { useWallet } from '@/contexts/wallet-context';
 import { WalletButton } from '@/components/wallet-button';
 import { MusicEditor } from '@/components/music-editor';
@@ -265,6 +265,29 @@ function HomePage() {
 
     // 关闭编辑器
     setEditingSession(null);
+  };
+
+  const handleMintTrackNFT = (session: Session) => {
+    if (!isConnected || !address) {
+      setShowWalletDialog(true);
+      return;
+    }
+
+    // 检查用户是否已贡献音轨
+    const userContributorIndex = session.contributors.indexOf(address);
+    if (userContributorIndex === -1 || userContributorIndex >= session.progress) {
+      alert('You need to complete and save a track first!');
+      return;
+    }
+
+    // 打开编辑器，让用户 mint 他们贡献的音轨
+    // 设置 editingTrackType 为用户贡献的轨道类型
+    const userTrackType = trackTypes[userContributorIndex];
+    const sessionWithEditing = { ...session, editingTrackType: userTrackType };
+    setEditingSession(sessionWithEditing);
+
+    // 设置一个标志，让 MusicEditor 知道这是一个 mint 操作
+    // 这里我们可以在 MusicEditor 组件中添加一个 prop 来处理
   };
 
   const hasJoinedSession = (session: Session) => {
@@ -666,24 +689,37 @@ function HomePage() {
                           View
                         </Button>
                       ) : (
-                        // 未完成且未满：显示Edit按钮
-                        <Button
-                          onClick={() => handleJoinSession(session.id)}
-                          disabled={!isConnected || loadingStates[session.id]}
-                          className="flex-1 bg-purple-600 hover:bg-purple-700"
-                        >
-                          {loadingStates[session.id] ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Joining...
-                            </>
-                          ) : (
-                            <>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit {session.editingTrackType || session.currentTrackType}
-                            </>
+                        // 未完成且未满：显示Edit按钮和Mint Track NFT按钮
+                        <>
+                          <Button
+                            onClick={() => handleJoinSession(session.id)}
+                            disabled={!isConnected || loadingStates[session.id]}
+                            className="flex-[2] bg-purple-600 hover:bg-purple-700"
+                          >
+                            {loadingStates[session.id] ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Joining...
+                              </>
+                            ) : (
+                              <>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit {session.editingTrackType || session.currentTrackType}
+                              </>
+                            )}
+                          </Button>
+                          {session.progress > 0 && (
+                            <Button
+                              variant="outline"
+                              disabled={!isConnected}
+                              onClick={() => handleMintTrackNFT(session)}
+                              className="flex-1 border-green-500 text-green-400 hover:bg-green-600 hover:text-white"
+                              title="Mint your track as NFT"
+                            >
+                              <Gem className="h-4 w-4" />
+                            </Button>
                           )}
-                        </Button>
+                        </>
                       )}
                       <Button
                         variant="outline"

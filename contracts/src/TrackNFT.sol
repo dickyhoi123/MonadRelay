@@ -134,13 +134,13 @@ contract TrackNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     function commitToSession(
         uint256 tokenId,
         uint256 sessionId
-    ) external nonReentrant {
+    ) external {
         require(msg.sender == musicSession, "Not authorized");
         require(!trackMetadata[tokenId].isCommitted, "Already committed");
-        
+
         trackMetadata[tokenId].sessionId = sessionId;
         trackMetadata[tokenId].isCommitted = true;
-        
+
         emit TrackCommitted(tokenId, sessionId);
     }
 
