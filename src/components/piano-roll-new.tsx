@@ -103,6 +103,14 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const audioEngine = useAudioEngine();
+
+  // 初始化音色库
+  useEffect(() => {
+    if (audioEngine) {
+      audioEngine.initializeSoundLibrary();
+    }
+  }, [audioEngine]);
+
   const gridRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -161,8 +169,9 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
 
   // 播放鼓声
   const playDrumSound = useCallback((drumType: string, duration: number) => {
-    if (!audioEngine || !audioEngine['audioContext']) return;
-    const ctx = audioEngine['audioContext'];
+    if (!audioEngine) return;
+    const ctx = audioEngine.getAudioContext?.();
+    if (!ctx) return;
 
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
@@ -255,8 +264,9 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
 
   // 播放人声合唱
   const playVocalSound = useCallback((frequency: number, duration: number, type: 'sine' | 'square' | 'sawtooth' | 'triangle', velocity: number) => {
-    if (!audioEngine || !audioEngine['audioContext']) return;
-    const ctx = audioEngine['audioContext'];
+    if (!audioEngine) return;
+    const ctx = audioEngine.getAudioContext?.();
+    if (!ctx) return;
 
     const numVoices = 3;
     const gainNode = ctx.createGain();

@@ -28,6 +28,12 @@ export class AudioEngine {
     return this.soundLibrary;
   }
 
+  // 获取AudioContext（用于高级操作）
+  getAudioContext() {
+    return this.audioContext;
+  }
+
+  // 确保AudioContext已激活
   private ensureContext() {
     if (this.audioContext && this.audioContext.state === 'suspended') {
       this.audioContext.resume();

@@ -152,6 +152,13 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
   const playInterval = useRef<NodeJS.Timeout | null>(null);
   const pendingTimeouts = useRef<Set<NodeJS.Timeout>>(new Set());
 
+  // 初始化音色库
+  useEffect(() => {
+    if (audioEngine) {
+      audioEngine.initializeSoundLibrary();
+    }
+  }, [audioEngine]);
+
   // 显示Toast消息
   const showToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     setToastMessage({ type, message });
@@ -546,7 +553,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
   const totalClips = tracks.reduce((sum, track) => sum + track.clips.length, 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 pt-16 px-6 pb-6">
       {/* Toast 通知 */}
       {toastMessage && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg animate-in slide-in-from-right transition-all ${

@@ -726,13 +726,16 @@ function HomePage() {
         {/* Music Editor Dialog - Full screen modal */}
         {editingSession && (
           <div className="fixed inset-0 z-50 bg-slate-950 overflow-auto">
-            <button
-              onClick={handleEditorCancel}
-              className="absolute top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 bg-slate-900/80 hover:bg-slate-800/80 backdrop-blur-sm rounded-lg border border-slate-700 text-slate-300 hover:text-white transition-all shadow-lg"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              <span className="text-sm font-medium">Back</span>
-            </button>
+            {/* 顶部导航栏 */}
+            <div className="fixed top-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
+              <button
+                onClick={handleEditorCancel}
+                className="flex items-center gap-2 px-6 py-3 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-all"
+              >
+                <ArrowLeft className="h-5 w-5" />
+                <span className="text-sm font-medium">Back to Sessions</span>
+              </button>
+            </div>
             <MusicEditor
               sessionId={editingSession.id}
               sessionName={editingSession.name}
