@@ -10,10 +10,10 @@ import { PianoRollReadonly } from '@/components/piano-roll-readonly';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
 import { InstrumentType } from '@/lib/sound-library';
 
-type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
+export type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
 type TrackId = string;
 
-interface AudioClip {
+export interface AudioClip {
   id: string;
   name: string;
   startTime: number; // 拍子
@@ -24,7 +24,7 @@ interface AudioClip {
   pianoNotes?: PianoNote[];
 }
 
-interface Track {
+export interface Track {
   id: TrackId;
   type: TrackType;
   name: string;
@@ -39,6 +39,7 @@ interface MusicEditorProps {
   sessionId: number;
   sessionName: string;
   trackType: TrackType;
+  initialTracks?: Track[]; // 初始音轨数据（从Session传入）
   onSave?: (data: any) => void;
   onCancel?: () => void;
 }
@@ -54,11 +55,17 @@ const TOTAL_BARS = 16;
 const BEATS_PER_BAR = 4;
 const TOTAL_BEATS = TOTAL_BARS * BEATS_PER_BAR;
 
-export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCancel }: MusicEditorProps) {
+export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, onSave, onCancel }: MusicEditorProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(0);
   const [tracks, setTracks] = useState<Track[]>(() => {
-    const initialTracks: Track[] = [
+    // 如果传入了初始音轨，使用它们
+    if (initialTracks && initialTracks.length > 0) {
+      return initialTracks;
+    }
+
+    // 否则使用默认的空音轨
+    const defaultTracks: Track[] = [
       {
         id: '1',
         type: 'Drum',
@@ -101,28 +108,28 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
       }
     ];
 
-    // 为当前轨道添加一些默认音频片段
-    const targetTrackIndex = initialTracks.findIndex(t => t.type === trackType);
+    // 为当前轨道添加一些默认音频片段（仅用于新Session）
+    const targetTrackIndex = defaultTracks.findIndex(t => t.type === trackType);
     if (targetTrackIndex >= 0) {
-      initialTracks[targetTrackIndex].clips = [
+      defaultTracks[targetTrackIndex].clips = [
         {
           id: `clip-${Date.now()}-1`,
           name: 'Default Beat',
           startTime: 0,
           duration: 8,
-          color: initialTracks[targetTrackIndex].color
+          color: defaultTracks[targetTrackIndex].color
         },
         {
           id: `clip-${Date.now()}-2`,
           name: 'Fill',
           startTime: 12,
           duration: 4,
-          color: initialTracks[targetTrackIndex].color
+          color: defaultTracks[targetTrackIndex].color
         }
       ];
     }
 
-    return initialTracks;
+    return defaultTracks;
   });
 
   const [selectedClip, setSelectedClip] = useState<{ trackId: TrackId; clipId: string } | null>(null);
@@ -612,15 +619,6 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                 className="hidden"
                 id="audio-upload"
               />
-              <label htmlFor="audio-upload">
-                <Button
-                  variant="outline"
-                  className="cursor-pointer border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Import Audio
-                </Button>
-              </label>
               <Button
                 variant="outline"
                 onClick={onCancel}

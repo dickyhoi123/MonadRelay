@@ -15,9 +15,17 @@ import { useWallet } from '@/contexts/wallet-context';
 import { WalletButton } from '@/components/wallet-button';
 import { MusicEditor } from '@/components/music-editor';
 import { ChatRoom } from '@/components/chat-room';
+import type { Track, TrackType } from '@/components/music-editor';
 
 // 类型定义
-type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
+interface PianoNote {
+  id: string;
+  note: string;
+  octave: number;
+  startTime: number; // 16分音符
+  duration: number; // 16分音符
+  velocity: number;
+}
 
 interface Session {
   id: number;
@@ -32,6 +40,7 @@ interface Session {
   contributors: string[];
   createdAt: number;
   editingTrackType?: TrackType; // 当前正在编辑的轨道类型（未保存）
+  tracks?: Track[]; // 所有音轨数据
 }
 
 // 模拟数据
@@ -124,6 +133,25 @@ function HomePage() {
     if (!newSession.name || !newSession.genre) return;
 
     const initialTrackType: TrackType = 'Drum';
+    const TRACK_COLORS: Record<TrackType, string> = {
+      Drum: '#3b82f6',
+      Bass: '#22c55e',
+      Synth: '#a855f7',
+      Vocal: '#ec4899',
+    };
+
+    // 初始化4个空轨道
+    const initialTracks: Track[] = trackTypes.map((type, index) => ({
+      id: `${Date.now()}-${index}`,
+      type,
+      name: `${type} Track`,
+      color: TRACK_COLORS[type],
+      clips: [],
+      volume: 80,
+      isMuted: false,
+      isSolo: false
+    }));
+
     const session: Session = {
       id: sessions.length + 1,
       name: newSession.name,
@@ -136,7 +164,8 @@ function HomePage() {
       isFinalized: false,
       contributors: address ? [address] : [],
       createdAt: Date.now(),
-      editingTrackType: initialTrackType // 立即开始编辑
+      editingTrackType: initialTrackType, // 立即开始编辑
+      tracks: initialTracks
     };
     setSessions([session, ...sessions]);
     setShowCreateDialog(false);
@@ -200,14 +229,15 @@ function HomePage() {
   const handleEditorSave = (data: any) => {
     if (!editingSession) return;
 
-    // 保存时更新 progress 和 currentTrackType
+    // 保存时更新 progress、currentTrackType 和 tracks
     const newProgress = editingSession.progress + 1;
     const updatedSession = {
       ...editingSession,
       progress: newProgress,
       currentTrackType: trackTypes[newProgress] || editingSession.currentTrackType,
       editingTrackType: undefined, // 清除未保存的编辑状态
-      isFinalized: newProgress >= editingSession.totalTracks
+      isFinalized: newProgress >= editingSession.totalTracks,
+      tracks: data.tracks // 保存所有音轨数据
     };
 
     // 更新会话列表
@@ -706,6 +736,7 @@ function HomePage() {
               sessionId={editingSession.id}
               sessionName={editingSession.name}
               trackType={editingSession.currentTrackType}
+              initialTracks={editingSession.tracks}
               onSave={handleEditorSave}
               onCancel={handleEditorCancel}
             />
