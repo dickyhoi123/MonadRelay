@@ -309,11 +309,8 @@ export class SoundLibrary {
         release = 0.3;
         break;
       case 'vocal':
-        oscillatorType = 'sine';
-        attack = 0.05;
-        decay = 0.15;
-        sustain = 0.7;
-        release = 0.4;
+        // 人声使用特殊的合唱效果
+        return this.playVocalChorus(frequency, duration, volume);
         break;
       case 'drum':
         // 鼓组使用特殊处理
@@ -386,6 +383,95 @@ export class SoundLibrary {
 
       noiseNode.start(this.audioContext!.currentTime);
       noiseNode.stop(this.audioContext!.currentTime + duration);
+    }
+  }
+
+  // 播放人声合唱效果
+  private async playVocalChorus(frequency: number, duration: number, volume: number): Promise<void> {
+    const numVoices = 3; // 3个声部
+    const voices: OscillatorNode[] = [];
+    const gainNodes: GainNode[] = [];
+    const masterGain = this.audioContext!.createGain();
+
+    // 每个声部有略微不同的音高，模拟多人合唱
+    const detuneValues = [0, -5, +8]; // 音高偏移（音分）
+    const volumeRatios = [1.0, 0.8, 0.7]; // 每个声部的音量比例
+
+    // 为每个声部创建振荡器
+    for (let i = 0; i < numVoices; i++) {
+      const oscillator = this.audioContext!.createOscillator();
+      const gainNode = this.audioContext!.createGain();
+
+      // 使用混合波形：sine + triangle 模拟人声的丰富谐波
+      // 由于 Web Audio API 的 Oscillator 只能有一种波形，我们使用 triangle
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, this.audioContext!.currentTime);
+
+      // 添加音高偏移（失谐效果）
+      const detunedFreq = frequency * Math.pow(2, detuneValues[i] / 1200);
+      oscillator.frequency.setValueAtTime(detunedFreq, this.audioContext!.currentTime);
+
+      // 添加 vibrato（颤音效果）
+      const lfo = this.audioContext!.createOscillator();
+      const lfoGain = this.audioContext!.createGain();
+      lfo.type = 'sine';
+      lfo.frequency.value = 5 + i * 0.5; // 5-6 Hz 的颤音频率
+      lfoGain.gain.value = 3; // 颤音深度（音分）
+      lfo.connect(lfoGain);
+      lfoGain.connect(oscillator.frequency);
+      lfo.start();
+      lfo.stop(this.audioContext!.currentTime + duration);
+
+      // ADSR 包络 - 人声通常有较慢的起音和较长的衰减
+      const attack = 0.1; // 较慢的起音
+      const decay = 0.2;
+      const sustain = 0.6;
+      const release = 0.5;
+
+      gainNode.gain.setValueAtTime(0, this.audioContext!.currentTime);
+      gainNode.gain.linearRampToValueAtTime(volume * volumeRatios[i] * 0.5, this.audioContext!.currentTime + attack);
+      gainNode.gain.linearRampToValueAtTime(volume * volumeRatios[i] * 0.5 * sustain, this.audioContext!.currentTime + attack + decay);
+      gainNode.gain.linearRampToValueAtTime(0, this.audioContext!.currentTime + duration);
+
+      // 使用低通滤波器模拟人声的柔和特性
+      const filter = this.audioContext!.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2000; // 2kHz 截止频率，模拟人声的频率范围
+      filter.Q.value = 1;
+
+      oscillator.connect(filter);
+      filter.connect(gainNode);
+      gainNode.connect(masterGain);
+
+      oscillator.start(this.audioContext!.currentTime);
+      oscillator.stop(this.audioContext!.currentTime + duration);
+
+      voices.push(oscillator);
+      gainNodes.push(gainNode);
+    }
+
+    // 主音量控制
+    masterGain.gain.value = 0.8; // 稍微降低总音量，避免失真
+    masterGain.connect(this.audioContext!.destination);
+
+    // 简单的合唱效果：添加一个延迟的复制声部
+    if (this.audioContext) {
+      const delayNode = this.audioContext.createDelay(1.0);
+      const delayGain = this.audioContext.createGain();
+      const filter = this.audioContext.createBiquadFilter();
+
+      delayNode.delayTime.value = 0.05; // 50ms 延迟
+      delayGain.gain.value = 0.3; // 30% 混合比例
+      filter.type = 'lowpass';
+      filter.frequency.value = 1000;
+
+      // 只连接第一个声部到延迟效果，节省资源
+      if (gainNodes[0]) {
+        gainNodes[0].connect(delayNode);
+        delayNode.connect(filter);
+        filter.connect(delayGain);
+        delayGain.connect(this.audioContext!.destination);
+      }
     }
   }
 
