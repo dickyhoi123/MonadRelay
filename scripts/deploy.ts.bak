@@ -1,0 +1,97 @@
+import { ethers } from "hardhat";
+
+async function main() {
+  console.log("Deploying MonadRelay contracts...\n");
+
+  // 获取部署者账户
+  const [deployer] = await ethers.getSigners();
+  console.log("Deploying contracts with account:", deployer.address);
+  const balance = await ethers.provider.getBalance(deployer.address);
+  console.log("Account balance:", ethers.formatEther(balance), "ETH\n");
+
+  // 部署 TrackNFT
+  console.log("1. Deploying TrackNFT...");
+  const TrackNFT = await ethers.getContractFactory("TrackNFT");
+  const trackNFT = await TrackNFT.deploy();
+  await trackNFT.waitForDeployment();
+  const trackNFTAddress = await trackNFT.getAddress();
+  console.log("   TrackNFT deployed to:", trackNFTAddress);
+
+  // 部署 MasterComposition
+  console.log("\n2. Deploying MasterComposition...");
+  const MasterComposition = await ethers.getContractFactory("MasterComposition");
+  const masterComposition = await MasterComposition.deploy();
+  await masterComposition.waitForDeployment();
+  const masterCompositionAddress = await masterComposition.getAddress();
+  console.log("   MasterComposition deployed to:", masterCompositionAddress);
+
+  // 部署 MusicSession
+  console.log("\n3. Deploying MusicSession...");
+  const MusicSession = await ethers.getContractFactory("MusicSession");
+  const musicSession = await MusicSession.deploy();
+  await musicSession.waitForDeployment();
+  const musicSessionAddress = await musicSession.getAddress();
+  console.log("   MusicSession deployed to:", musicSessionAddress);
+
+  // 设置合约引用
+  console.log("\n4. Setting up contract references...");
+  const tx1 = await musicSession.setTrackNFT(trackNFTAddress);
+  await tx1.wait();
+  console.log("   MusicSession.setTrackNFT() - completed");
+
+  const tx2 = await musicSession.setMasterComposition(masterCompositionAddress);
+  await tx2.wait();
+  console.log("   MusicSession.setMasterComposition() - completed");
+
+  // 输出部署信息
+  console.log("\n✅ Deployment completed!\n");
+  console.log("========================================");
+  console.log("Contract Addresses:");
+  console.log("========================================");
+  console.log("TrackNFT:          ", trackNFTAddress);
+  console.log("MasterComposition:", masterCompositionAddress);
+  console.log("MusicSession:      ", musicSessionAddress);
+  console.log("========================================\n");
+
+  // 保存到 .env 文件
+  const envContent = `
+NEXT_PUBLIC_TRACK_NFT_ADDRESS=${trackNFTAddress}
+NEXT_PUBLIC_MASTER_COMPOSITION_ADDRESS=${masterCompositionAddress}
+NEXT_PUBLIC_MUSIC_SESSION_ADDRESS=${musicSessionAddress}
+`;
+
+  const fs = require("fs");
+  fs.writeFileSync(".env.local", envContent.trim());
+  console.log("Environment variables saved to .env.local\n");
+
+  // 验证部署
+  console.log("Verifying deployment...\n");
+
+  // 验证 TrackNFT
+  const trackNFTName = await trackNFT.name();
+  const trackNFTSymbol = await trackNFT.symbol();
+  console.log("TrackNFT name:", trackNFTName);
+  console.log("TrackNFT symbol:", trackNFTSymbol);
+
+  // 验证 MasterComposition
+  const masterName = await masterComposition.name();
+  const masterSymbol = await masterComposition.symbol();
+  console.log("MasterComposition name:", masterName);
+  console.log("MasterComposition symbol:", masterSymbol);
+
+  // 验证合约引用
+  const linkedTrackNFT = await musicSession.trackNFT();
+  const linkedMaster = await musicSession.masterComposition();
+  console.log("\nContract references:");
+  console.log("MusicSession -> TrackNFT:", linkedTrackNFT.toLowerCase() === trackNFTAddress.toLowerCase() ? "✓" : "✗");
+  console.log("MusicSession -> MasterComposition:", linkedMaster.toLowerCase() === masterCompositionAddress.toLowerCase() ? "✓" : "✗");
+
+  console.log("\n🎉 All contracts deployed and verified successfully!");
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

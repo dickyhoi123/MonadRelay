@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Music, X, Piano, Edit3, Trash2, Eye } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Music, X, Piano, Edit3, Trash2, Eye, Gem } from 'lucide-react';
 import { PianoRollNew, PianoNote, INSTRUMENT_PRESETS } from '@/components/piano-roll-new';
 import { PianoRollReadonly } from '@/components/piano-roll-readonly';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
@@ -702,6 +702,59 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
     }, 1500);
   };
 
+  const handleMintNFT = async () => {
+    setIsSaving(true);
+    try {
+      // 动态导入编码模块
+      const { encodeTracksToJSON, calculateTotalSixteenthNotes } = await import('@/lib/music-encoder');
+
+      // 编码 tracks 数据为 JSON
+      const bpm = 120; // 默认 BPM
+      const totalSixteenthNotes = calculateTotalSixteenthNotes(tracks);
+      const encodedTracks = encodeTracksToJSON(tracks, bpm, totalSixteenthNotes);
+
+      // 验证编码数据
+      const { validateEncodedData } = await import('@/lib/music-encoder');
+      if (!validateEncodedData(encodedTracks)) {
+        throw new Error('Invalid encoded data');
+      }
+
+      console.log('Encoded tracks:', encodedTracks);
+      console.log('BPM:', bpm);
+      console.log('Total 16th notes:', totalSixteenthNotes);
+
+      // 模拟铸造延迟
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // 生成模拟的 Token ID（实际应该从合约返回）
+      const mockTokenId = Date.now() % 1000;
+
+      // 保存到 localStorage 以便测试
+      const nftData = {
+        tokenId: mockTokenId,
+        trackType: trackType,
+        bpm: bpm,
+        totalSixteenthNotes: totalSixteenthNotes,
+        encodedTracks: encodedTracks,
+        createdAt: new Date().toISOString()
+      };
+
+      const existingNFTs = JSON.parse(localStorage.getItem('mintedNFTs') || '[]');
+      existingNFTs.push(nftData);
+      localStorage.setItem('mintedNFTs', JSON.stringify(existingNFTs));
+
+      showToast('success', `Track NFT minted successfully! Token ID: ${mockTokenId}. You can decode it in the NFT Decoder page.`);
+      setIsSaving(false);
+
+      // 保存后继续其他操作
+      onSave?.({ tracks, currentBeat });
+    } catch (error) {
+      console.error('Failed to mint NFT:', error);
+      showToast('error', 'Failed to mint NFT. Please try again.');
+      setIsSaving(false);
+    }
+  };
+
   const formatTime = (beat: number) => {
     const bars = Math.floor(beat / BEATS_PER_BAR);
     const beatsInBar = Math.floor(beat % BEATS_PER_BAR);
@@ -829,6 +882,23 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
                       <>
                         <Upload className="h-4 w-4 mr-2" />
                         Upload Track
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleMintNFT}
+                    disabled={totalClips === 0 || isSaving}
+                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+                  >
+                    {isSaving ? (
+                      <>
+                        <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        Minting...
+                      </>
+                    ) : (
+                      <>
+                        <Gem className="h-4 w-4 mr-2" />
+                        Mint NFT
                       </>
                     )}
                   </Button>

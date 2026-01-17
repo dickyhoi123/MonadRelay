@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
-import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X, ArrowLeft, Eye } from 'lucide-react';
+import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X, ArrowLeft, Eye, Code } from 'lucide-react';
 import { useWallet } from '@/contexts/wallet-context';
 import { WalletButton } from '@/components/wallet-button';
 import { MusicEditor } from '@/components/music-editor';
@@ -287,7 +287,17 @@ function HomePage() {
               </p>
             </div>
           </div>
-          <WalletButton />
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => window.location.href = '/nft-decoder'}
+              className="border-purple-500/50 text-purple-300 hover:bg-purple-600/10"
+            >
+              <Code className="h-4 w-4 mr-2" />
+              NFT Decoder
+            </Button>
+            <WalletButton />
+          </div>
         </header>
 
         {/* Stats */}
