@@ -148,6 +148,7 @@ export function encodedNoteToPianoNote(
 
 /**
  * 验证编码数据的有效性
+ * 期望格式: { "Drum": [{note, startTime, duration, velocity, instrumentId}], "Bass": [...] }
  */
 export function validateEncodedData(jsonString: string): boolean {
   try {
@@ -159,6 +160,7 @@ export function validateEncodedData(jsonString: string): boolean {
 
     // 验证每个音轨的数据格式
     const validTrackTypes = ['Drum', 'Bass', 'Synth', 'Vocal'];
+    let hasValidTrack = false;
 
     for (const trackType of Object.keys(data)) {
       if (!validTrackTypes.includes(trackType)) {
@@ -170,29 +172,34 @@ export function validateEncodedData(jsonString: string): boolean {
         return false;
       }
 
-      // 验证每个音符的格式
+      if (notes.length > 0) {
+        hasValidTrack = true;
+      }
+
+      // 验证每个音符的格式 (对象格式)
       for (const note of notes) {
         if (
-          !Array.isArray(note) ||
-          note.length !== 5 ||
-          typeof note[0] !== 'number' || // note
-          typeof note[1] !== 'number' || // startTime
-          typeof note[2] !== 'number' || // duration
-          typeof note[3] !== 'number' || // velocity
-          typeof note[4] !== 'string'    // instrumentId
+          typeof note !== 'object' ||
+          note === null ||
+          typeof note.note !== 'number' || // MIDI 音符编号
+          typeof note.startTime !== 'number' || // 16分音符单位
+          typeof note.duration !== 'number' || // 16分音符单位
+          typeof note.velocity !== 'number' || // 力度 (0-100)
+          typeof note.instrumentId !== 'string' // 乐器ID
         ) {
           return false;
         }
 
         // 验证数值范围
-        if (note[0] < 0 || note[0] > 127) return false; // MIDI 音符范围
-        if (note[1] < 0) return false; // startTime 不能为负
-        if (note[2] <= 0) return false; // duration 必须大于 0
-        if (note[3] < 0 || note[3] > 127) return false; // velocity 范围
+        if (note.note < 0 || note.note > 127) return false; // MIDI 音符范围
+        if (note.startTime < 0) return false; // startTime 不能为负
+        if (note.duration <= 0) return false; // duration 必须大于 0
+        if (note.velocity < 0 || note.velocity > 127) return false; // velocity 范围
       }
     }
 
-    return true;
+    // 至少有一个有效的音轨
+    return hasValidTrack;
   } catch (error) {
     return false;
   }

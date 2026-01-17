@@ -17,7 +17,7 @@ import { MusicEditor } from '@/components/music-editor';
 import { ChatRoom } from '@/components/chat-room';
 import type { Track, TrackType } from '@/components/music-editor';
 import { usePublicClient, useAccount, useChainId } from 'wagmi';
-import { useCreateSession, useJoinAndCommit, waitForTransaction, getMultipleSessions, useMintMasterNFT, useGetSessionMasterToken } from '@/lib/contract-hooks';
+import { useCreateSession, useJoinAndCommit, useMintTrackNFT, waitForTransaction, getMultipleSessions, useMintMasterNFT, useGetSessionMasterToken } from '@/lib/contract-hooks';
 import { getContractAddresses, MUSIC_SESSION_ABI } from '@/lib/contracts.config';
 
 // 类型定义
@@ -61,6 +61,7 @@ function HomePage() {
   const publicClient = usePublicClient();
   const { createSession } = useCreateSession();
   const { joinAndCommit } = useJoinAndCommit();
+  const { mintTrack } = useMintTrackNFT();
   const { mintMaster } = useMintMasterNFT();
   const { getSessionMasterToken } = useGetSessionMasterToken();
   const chainId = useChainId();
@@ -399,25 +400,94 @@ function HomePage() {
     setEditingSession(updatedSession);
   };
 
-  const handleEditorSave = (data: any) => {
-    if (!editingSession) return;
+  const handleEditorSave = async (data: any) => {
+    if (!editingSession || !address) return;
 
-    // 保存时更新 progress、currentTrackType 和 tracks
-    const newProgress = editingSession.progress + 1;
-    const updatedSession = {
-      ...editingSession,
-      progress: newProgress,
-      currentTrackType: trackTypes[newProgress] || editingSession.currentTrackType,
-      editingTrackType: undefined, // 清除未保存的编辑状态
-      isFinalized: newProgress >= editingSession.totalTracks,
-      tracks: data.tracks // 保存所有音轨数据
-    };
+    try {
+      setLoadingStates(prev => ({ ...prev, upload: true }));
 
-    // 更新会话列表
-    setSessions(prevSessions => prevSessions.map(s => s.id === editingSession.id ? updatedSession : s));
+      // 1. Mint Track NFT
+      const trackTypeMap: Record<TrackType, number> = {
+        Drum: 0,
+        Bass: 1,
+        Synth: 2,
+        Vocal: 3
+      };
 
-    // 关闭编辑器
-    setEditingSession(null);
+      // 动态导入编码模块
+      const { encodeTracksToJSON, calculateTotalSixteenthNotes } = await import('@/lib/music-encoder');
+
+      // 编码 tracks 数据为 JSON
+      const bpm = editingSession.bpm || 120;
+      const totalSixteenthNotes = calculateTotalSixteenthNotes(data.tracks);
+      const encodedTracks = encodeTracksToJSON(data.tracks, bpm, totalSixteenthNotes);
+
+      // 调用合约铸造 Track NFT
+      const trackNFTHash = await mintTrack(
+        trackTypeMap[editingSession.currentTrackType],
+        bpm,
+        totalSixteenthNotes,
+        encodedTracks
+      );
+
+      console.log('Track NFT minting submitted:', trackNFTHash);
+
+      // 等待交易确认并获取tokenId
+      let trackId = 0;
+      if (publicClient) {
+        const receipt = await waitForTransaction(publicClient, trackNFTHash);
+        console.log('Track NFT minted:', receipt);
+
+        // 从 Transfer 事件中获取 Token ID
+        if (receipt.logs && receipt.logs.length > 0) {
+          const transferLog = receipt.logs.find((log: any) =>
+            log.topics && log.topics.length === 4
+          );
+
+          if (transferLog && transferLog.topics[3]) {
+            trackId = Number(BigInt(transferLog.topics[3]));
+            console.log('Track NFT Token ID:', trackId);
+          }
+        }
+      }
+
+      // 2. 调用 joinAndCommit 将 trackId 提交到 Session
+      const joinHash = await joinAndCommit(
+        editingSession.id,
+        trackId,
+        trackTypeMap[editingSession.currentTrackType]
+      );
+
+      console.log('Join and commit submitted:', joinHash);
+
+      // 等待交易确认
+      if (publicClient) {
+        await waitForTransaction(publicClient, joinHash);
+        console.log('Join and commit confirmed');
+      }
+
+      // 3. 重新加载 Sessions（从合约获取最新数据）
+      const loadedSessions = await loadSessions();
+      const updatedSession = loadedSessions.find(s => s.id === editingSession.id);
+
+      if (updatedSession) {
+        // 更新前端状态
+        setSessions(prevSessions => prevSessions.map(s => s.id === editingSession.id ? {
+          ...updatedSession,
+          tracks: data.tracks,
+          editingTrackType: undefined
+        } : s));
+      }
+
+      showToast('success', `${editingSession.currentTrackType} track uploaded successfully!`);
+    } catch (error) {
+      console.error('Failed to save track:', error);
+      showToast('error', `Failed to save track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, upload: false }));
+      // 关闭编辑器
+      setEditingSession(null);
+    }
   };
 
   const handleEditorCancel = () => {

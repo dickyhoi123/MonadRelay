@@ -729,6 +729,19 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
         return;
       }
 
+      // 检查是否有音符数据
+      const hasNotes = tracks.some(track =>
+        track.clips.some(clip =>
+          clip.pianoNotes && clip.pianoNotes.length > 0
+        )
+      );
+
+      if (!hasNotes) {
+        showToast('error', 'Please add some notes using the Piano Roll before minting.');
+        setIsSaving(false);
+        return;
+      }
+
       // 动态导入编码模块
       const { encodeTracksToJSON, calculateTotalSixteenthNotes } = await import('@/lib/music-encoder');
 
@@ -736,12 +749,6 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
       const bpm = 120; // 默认 BPM
       const totalSixteenthNotes = calculateTotalSixteenthNotes(tracks);
       const encodedTracks = encodeTracksToJSON(tracks, bpm, totalSixteenthNotes);
-
-      // 验证编码数据
-      const { validateEncodedData } = await import('@/lib/music-encoder');
-      if (!validateEncodedData(encodedTracks)) {
-        throw new Error('Invalid encoded data');
-      }
 
       console.log('Encoded tracks:', encodedTracks);
       console.log('BPM:', bpm);
