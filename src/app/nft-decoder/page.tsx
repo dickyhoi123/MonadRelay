@@ -32,6 +32,7 @@ export default function NFTDecoder() {
   const { getMasterInfo } = useGetMasterInfo();
   const audioEngine = useAudioEngine();
 
+  const [mounted, setMounted] = useState(false);
   const [tokenId, setTokenId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +44,11 @@ export default function NFTDecoder() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(0);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+
+  // 确保客户端渲染一致性
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const showToast = (type: 'success' | 'error' | 'info', message: string) => {
     setToastMessage({ type, message });
@@ -302,13 +308,13 @@ export default function NFTDecoder() {
                   value={tokenId}
                   onChange={(e) => setTokenId(e.target.value)}
                   className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
-                  disabled={!isConnected}
+                  disabled={!mounted || !isConnected}
                 />
               </div>
               <div className="flex items-end">
                 <Button
                   onClick={handleDecode}
-                  disabled={!isConnected || loading || !tokenId}
+                  disabled={!mounted || !isConnected || loading || !tokenId}
                   className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                 >
                   {loading ? (
@@ -326,7 +332,7 @@ export default function NFTDecoder() {
               </div>
             </div>
 
-            {!isConnected && (
+            {mounted && !isConnected && (
               <Alert className="border-yellow-500/50 bg-yellow-500/10">
                 <AlertDescription className="text-yellow-300">
                   Please connect your wallet to decode NFTs

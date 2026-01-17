@@ -622,7 +622,7 @@ function HomePage() {
                     <div className="flex gap-2">
                       <Button
                         onClick={() => handleJoinSession(session.id)}
-                        disabled={!isConnected || loadingStates[session.id] || session.isFinalized || session.progress >= session.totalTracks}
+                        disabled={!mounted || !isConnected || loadingStates[session.id] || session.isFinalized || session.progress >= session.totalTracks}
                         className="flex-1 bg-purple-600 hover:bg-purple-700"
                       >
                         {loadingStates[session.id] ? (
@@ -764,7 +764,7 @@ function HomePage() {
                         // 已完成的session：显示Listen按钮（只读模式）
                         <Button
                           onClick={() => setReadonlySession(session)}
-                          disabled={!isConnected}
+                          disabled={!mounted || !isConnected}
                           className="flex-1 bg-purple-600 hover:bg-purple-700"
                         >
                           <Play className="h-4 w-4 mr-2" />
@@ -774,7 +774,7 @@ function HomePage() {
                         // 已满但未完成：显示View按钮（只读模式）
                         <Button
                           onClick={() => setReadonlySession(session)}
-                          disabled={!isConnected}
+                          disabled={!mounted || !isConnected}
                           variant="outline"
                           className="flex-1 border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
                         >
@@ -804,7 +804,7 @@ function HomePage() {
                           {session.progress > 0 && (
                             <Button
                               variant="outline"
-                              disabled={!isConnected}
+                              disabled={!mounted || !isConnected}
                               onClick={() => handleMintTrackNFT(session)}
                               className="flex-1 border-green-500 text-green-400 hover:bg-green-600 hover:text-white"
                               title="Mint your track as NFT"
@@ -859,7 +859,7 @@ function HomePage() {
                       <Button
                         variant="outline"
                         onClick={() => setReadonlySession(session)}
-                        disabled={!isConnected}
+                        disabled={!mounted || !isConnected}
                         className="flex-1 border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
                       >
                         <Music className="h-4 w-4 mr-2" />
