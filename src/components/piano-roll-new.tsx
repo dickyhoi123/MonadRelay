@@ -400,27 +400,36 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     setDraggedInstrument(null);
   };
 
-  // 时间条点击跳转
-  const handleTimelineClick = (e: MouseEvent<HTMLDivElement>) => {
+  // 时间线拖拽处理
+  const handleTimelineMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+    if (!timelineRef.current) return;
+    setIsDraggingTimeline(true);
+    updateTimelinePosition(e);
+  };
+
+  const updateTimelinePosition = (e: MouseEvent<HTMLDivElement>) => {
     if (!timelineRef.current) return;
     
     const rect = timelineRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - 64;
+    const x = e.clientX - rect.left - 64; // 减去钢琴键宽度
     const width = rect.width - 64;
     
     const newPosition = Math.floor((x / width) * TOTAL_SIXTEENTH_NOTES);
     setCurrentPosition(Math.max(0, Math.min(TOTAL_SIXTEENTH_NOTES - 1, newPosition)));
-    
-    if (isPlaying) {
-      setIsPlaying(false);
-      if (playInterval.current) {
-        clearInterval(playInterval.current);
-        playInterval.current = null;
-      }
-      pendingTimeouts.current.forEach(id => clearTimeout(id));
-      pendingTimeouts.current = [];
-      
-      setTimeout(() => handlePlay(), 0);
+  };
+
+  const handleTimelineMouseUp = () => {
+    setIsDraggingTimeline(false);
+  };
+
+  const handleTimelineMouseLeave = () => {
+    setIsDraggingTimeline(false);
+  };
+
+  // 时间线移动处理（用于拖拽）
+  const handleTimelineMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (isDraggingTimeline) {
+      updateTimelinePosition(e);
     }
   };
 
@@ -674,42 +683,57 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
               {/* Timeline Header */}
               <div 
                 ref={timelineRef}
-                className="h-12 bg-slate-800 border-b border-slate-600 flex items-end relative flex-shrink-0 cursor-pointer"
-                onClick={handleTimelineClick}
+                className="h-12 bg-slate-800 border-b border-slate-600 flex items-end relative flex-shrink-0 cursor-pointer select-none"
+                onMouseDown={handleTimelineMouseDown}
+                onMouseMove={handleTimelineMouseMove}
+                onMouseUp={handleTimelineMouseUp}
+                onMouseLeave={handleTimelineMouseLeave}
               >
                 <div className="w-16 flex-shrink-0" />
                 <div className="flex-1 h-full relative">
-                  {/* 时间线网格 */}
+                  {/* 时间线网格 - 使用flex布局确保精确对齐 */}
                   <div className="absolute inset-0 flex">
                     {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
-                      const isBar = i % SIXTEENTH_NOTES_PER_BEAT === 0;
-                      const isBeat = i % (SIXTEENTH_NOTES_PER_BEAT / 4) === 0;
+                      // 小节线：每16个16分音符（即每4拍）
+                      const isBarLine = i % (BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT) === 0;
+                      // 拍线：每4个16分音符（即每拍）
+                      const isBeatLine = i % SIXTEENTH_NOTES_PER_BEAT === 0;
+                      
                       return (
                         <div
-                          key={i}
-                          className={`h-full border-r ${
-                            isBar ? 'border-purple-500/60' : isBeat ? 'border-purple-500/30' : 'border-slate-700/30'
+                          key={`timeline-v-${i}`}
+                          className={`h-full border-r flex-shrink-0 ${
+                            isBarLine 
+                              ? 'border-purple-500/60' 
+                              : isBeatLine 
+                                ? 'border-purple-500/30' 
+                                : 'border-slate-700/30'
                           }`}
                           style={{ width: `${100 / TOTAL_SIXTEENTH_NOTES}%` }}
                         />
                       );
                     })}
                   </div>
+                  
                   {/* 拍子标记 */}
                   <div className="absolute inset-x-0 top-0 h-7 bg-slate-900/70 flex items-center px-2">
                     {Array.from({ length: TOTAL_BARS * BEATS_PER_BAR }).map((_, i) => (
                       <span
                         key={i}
                         className="absolute text-xs text-slate-200 font-medium whitespace-nowrap"
-                        style={{ left: `${(i * SIXTEENTH_NOTES_PER_BEAT) / TOTAL_SIXTEENTH_NOTES * 100}%` }}
+                        style={{ 
+                          left: `${(i * SIXTEENTH_NOTES_PER_BEAT) / TOTAL_SIXTEENTH_NOTES * 100}%`,
+                          transform: 'translateX(-50%)'
+                        }}
                       >
                         {i + 1}
                       </span>
                     ))}
                   </div>
+                  
                   {/* 播放头 */}
                   <div
-                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 pointer-events-none transition-all duration-100 ease-out"
+                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 pointer-events-none transition-none"
                     style={{ left: `${(currentPosition / TOTAL_SIXTEENTH_NOTES) * 100}%` }}
                   >
                     <div className="absolute -top-1 -left-1.5 w-3 h-3 bg-red-500 rounded-full shadow-lg shadow-red-500/50" />
@@ -774,22 +798,34 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                   onDragLeave={handleGridDragLeave}
                   onDrop={handleGridDrop}
                 >
-                  {/* Grid Lines */}
+                  {/* Grid Lines - 使用flex布局确保精确对齐 */}
                   <div className="absolute inset-0 pointer-events-none z-0">
-                    {/* 垂直线 */}
-                    {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
-                      const isBar = i % SIXTEENTH_NOTES_PER_BEAT === 0;
-                      const isBeat = i % (SIXTEENTH_NOTES_PER_BEAT / 4) === 0;
-                      return (
-                        <div
-                          key={`v-${i}`}
-                          className={`absolute top-0 bottom-0 border-r ${
-                            isBar ? 'border-purple-500/30' : isBeat ? 'border-purple-500/15' : 'border-slate-800/10'
-                          }`}
-                          style={{ left: `${(i / TOTAL_SIXTEENTH_NOTES) * 100}%` }}
-                        />
-                      );
-                    })}
+                    {/* 垂直线 - 与时间线完全相同的布局 */}
+                    <div className="absolute inset-0 flex">
+                      {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
+                        // 小节线：每16个16分音符（即每4拍）
+                        const isBarLine = i % (BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT) === 0;
+                        // 拍线：每4个16分音符（即每拍）
+                        const isBeatLine = i % SIXTEENTH_NOTES_PER_BEAT === 0;
+                        
+                        return (
+                          <div
+                            key={`grid-v-${i}`}
+                            className={`absolute top-0 bottom-0 border-r flex-shrink-0 ${
+                              isBarLine 
+                                ? 'border-purple-500/30' 
+                                : isBeatLine 
+                                  ? 'border-purple-500/15' 
+                                  : 'border-slate-800/10'
+                            }`}
+                            style={{ 
+                              left: `${(i / TOTAL_SIXTEENTH_NOTES) * 100}%`,
+                              width: `${100 / TOTAL_SIXTEENTH_NOTES}%`
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
 
                     {/* 水平线 */}
                     {Array.from({ length: PIANO_NOTES.length * OCTAVES.length }).map((_, i) => {
@@ -905,10 +941,10 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
   const [editedNote, setEditedNote] = useState<PianoNote>(note);
 
   const formatTimePosition = (sixteenthNoteIndex: number) => {
-    const beat = Math.floor(sixteenthNoteIndex / 4);
-    const bar = Math.floor(beat / 4);
-    const beatInBar = beat % 4 + 1;
-    const sixteenthInBeat = sixteenthNoteIndex % 4 + 1;
+    const beat = Math.floor(sixteenthNoteIndex / SIXTEENTH_NOTES_PER_BEAT);
+    const bar = Math.floor(beat / BEATS_PER_BAR);
+    const beatInBar = beat % BEATS_PER_BAR + 1;
+    const sixteenthInBeat = sixteenthNoteIndex % SIXTEENTH_NOTES_PER_BEAT + 1;
     return `Bar ${bar + 1}, Beat ${beatInBar}, 16th ${sixteenthInBeat}`;
   };
 
@@ -917,10 +953,10 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
   };
 
   return (
-    <div className="fixed inset-0 z-[10001] flex items-center justify-center" style={{ background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(5px)' }}>
-      <div className="bg-slate-900 border-2 border-slate-600 rounded-lg shadow-2xl p-6 w-full max-w-md">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
+    <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" style={{ background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(5px)' }}>
+      <div className="bg-slate-900 border-2 border-slate-600 rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-slate-600 flex-shrink-0">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <Edit2 className="h-5 w-5 text-purple-400" />
             Edit Note
           </h3>
@@ -932,28 +968,28 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
           </button>
         </div>
 
-        <div className="space-y-5">
+        <div className="p-4 space-y-4 overflow-y-auto flex-1">
           {/* Position */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-300">
               Position
             </label>
             <div className="bg-slate-800 rounded-lg p-3 border border-slate-600">
-              <div className="text-white font-mono text-sm">{formatTimePosition(editedNote.startTime)}</div>
+              <div className="text-white font-mono text-sm mb-2">{formatTimePosition(editedNote.startTime)}</div>
               <input
                 type="range"
                 min="0"
                 max={TOTAL_SIXTEENTH_NOTES - 1}
                 value={editedNote.startTime}
                 onChange={(e) => setEditedNote({ ...editedNote, startTime: parseInt(e.target.value) })}
-                className="w-full mt-2 accent-purple-500"
+                className="w-full accent-purple-500"
               />
             </div>
           </div>
 
           {/* Duration */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-300">
               Duration (16th notes)
             </label>
             <div className="bg-slate-800 rounded-lg p-3 border border-slate-600">
@@ -975,8 +1011,8 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
           </div>
 
           {/* Note Pitch */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-300">
               Pitch
             </label>
             <div className="bg-slate-800 rounded-lg p-3 border border-slate-600">
@@ -1000,11 +1036,11 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
           </div>
 
           {/* Instrument */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-300">
               Instrument
             </label>
-            <div className="space-y-2 bg-slate-800 rounded-lg p-3 border border-slate-600 max-h-40 overflow-auto">
+            <div className="space-y-2 bg-slate-800 rounded-lg p-3 border border-slate-600 max-h-48 overflow-y-auto">
               {Object.values(allInstruments).flat().map((instrument) => (
                 <button
                   key={instrument.id}
@@ -1028,8 +1064,8 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
           </div>
 
           {/* Velocity */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-300">
               Velocity (Volume): {Math.round(editedNote.velocity * 100)}%
             </label>
             <div className="bg-slate-800 rounded-lg p-3 border border-slate-600">
@@ -1046,25 +1082,24 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="flex gap-3 p-4 border-t border-slate-600 flex-shrink-0">
           <Button
             onClick={handleSave}
-            className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-medium"
+            className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-medium text-sm"
           >
             Save Changes
           </Button>
           <Button
             onClick={() => onDelete(note.id)}
             variant="outline"
-            className="bg-red-600/20 border-red-500/50 text-red-400 hover:bg-red-600/30 hover:text-red-300"
+            className="bg-red-600/20 border-red-500/50 text-red-400 hover:bg-red-600/30 hover:text-red-300 text-sm"
           >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
+            <Trash2 className="h-4 w-4 mr-1" />
           </Button>
           <Button
             onClick={onClose}
             variant="outline"
-            className="border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white"
+            className="border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white text-sm"
           >
             Cancel
           </Button>
