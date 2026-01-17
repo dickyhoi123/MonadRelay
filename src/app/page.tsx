@@ -31,6 +31,7 @@ interface Session {
   isFinalized: boolean;
   contributors: string[];
   createdAt: number;
+  editingTrackType?: TrackType; // 当前正在编辑的轨道类型（未保存）
 }
 
 // 模拟数据
@@ -121,7 +122,8 @@ function HomePage() {
 
   const handleCreateSession = () => {
     if (!newSession.name || !newSession.genre) return;
-    
+
+    const initialTrackType: TrackType = 'Drum';
     const session: Session = {
       id: sessions.length + 1,
       name: newSession.name,
@@ -130,10 +132,11 @@ function HomePage() {
       bpm: newSession.bpm,
       progress: 0,
       totalTracks: newSession.maxTracks,
-      currentTrackType: 'Drum',
+      currentTrackType: initialTrackType,
       isFinalized: false,
       contributors: address ? [address] : [],
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      editingTrackType: initialTrackType // 立即开始编辑
     };
     setSessions([session, ...sessions]);
     setShowCreateDialog(false);
@@ -154,8 +157,12 @@ function HomePage() {
     // 检查是否已加入过
     const hasJoined = session.contributors.includes(address);
     if (hasJoined) {
-      // 如果已经加入过，直接打开编辑器
-      setEditingSession(session);
+      // 如果已经加入过，打开编辑器编辑当前需要完成的轨道
+      // 如果有未保存的 editingTrackType，继续编辑它
+      // 否则编辑 currentTrackType
+      const trackTypeToEdit = session.editingTrackType || session.currentTrackType;
+      const sessionWithEditing = { ...session, editingTrackType: trackTypeToEdit };
+      setEditingSession(sessionWithEditing);
       return;
     }
 
@@ -172,13 +179,12 @@ function HomePage() {
     setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
 
     setTimeout(() => {
-      // 创建新的会话状态
+      // 创建新的会话状态 - 首次加入时只添加贡献者，不更新 progress
+      // progress 只在保存时更新
       const updatedSession = {
         ...session,
-        progress: session.progress + 1,
-        currentTrackType: trackTypes[session.progress + 1] || session.currentTrackType,
         contributors: [...session.contributors, address],
-        isFinalized: session.progress + 1 >= session.totalTracks
+        editingTrackType: session.currentTrackType // 开始编辑当前轨道
       };
 
       // 更新会话列表
@@ -192,12 +198,41 @@ function HomePage() {
   };
 
   const handleEditorSave = (data: any) => {
-    // 保存音轨数据后关闭编辑器
+    if (!editingSession) return;
+
+    // 保存时更新 progress 和 currentTrackType
+    const newProgress = editingSession.progress + 1;
+    const updatedSession = {
+      ...editingSession,
+      progress: newProgress,
+      currentTrackType: trackTypes[newProgress] || editingSession.currentTrackType,
+      editingTrackType: undefined, // 清除未保存的编辑状态
+      isFinalized: newProgress >= editingSession.totalTracks
+    };
+
+    // 更新会话列表
+    setSessions(prevSessions => prevSessions.map(s => s.id === editingSession.id ? updatedSession : s));
+
+    // 关闭编辑器
     setEditingSession(null);
   };
 
   const handleEditorCancel = () => {
-    // 取消编辑，关闭编辑器
+    if (!editingSession) return;
+
+    // 取消时不清除 editingTrackType，只关闭编辑器
+    // 这样下次点击编辑时可以继续编辑未保存的内容
+    const sessionToCancel = sessions.find(s => s.id === editingSession.id);
+    if (sessionToCancel) {
+      // 清除 editingTrackType，恢复到已保存的状态
+      const updatedSession = {
+        ...sessionToCancel,
+        editingTrackType: undefined
+      };
+      setSessions(prevSessions => prevSessions.map(s => s.id === sessionToCancel.id ? updatedSession : s));
+    }
+
+    // 关闭编辑器
     setEditingSession(null);
   };
 
@@ -367,12 +402,16 @@ function HomePage() {
                         const isCompleted = idx < session.progress;
                         const isCurrent = idx === session.progress;
                         const isPending = idx > session.progress;
+                        // 如果有未保存的编辑状态，高亮显示正在编辑的轨道
+                        const isEditing = session.editingTrackType === track;
+
                         return (
                           <div
                             key={track}
                             className={`flex-1 text-center py-2 rounded text-xs font-medium transition-all ${
                               isCompleted ? `${trackColors[track]} text-white` :
-                              isCurrent ? 'bg-purple-600 text-white animate-pulse' :
+                              isEditing ? 'bg-purple-600 text-white animate-pulse' :
+                              isCurrent ? 'bg-purple-600 text-white' :
                               'bg-slate-800 text-slate-500'
                             }`}
                           >
@@ -419,7 +458,7 @@ function HomePage() {
                     <div className="flex gap-2">
                       <Button
                         onClick={() => handleJoinSession(session.id)}
-                        disabled={!isConnected || loadingStates[session.id] || session.isFinalized || (session.progress >= session.totalTracks) || hasJoinedSession(session)}
+                        disabled={!isConnected || loadingStates[session.id] || session.isFinalized || session.progress >= session.totalTracks}
                         className="flex-1 bg-purple-600 hover:bg-purple-700"
                       >
                         {loadingStates[session.id] ? (
@@ -430,7 +469,7 @@ function HomePage() {
                         ) : hasJoinedSession(session) ? (
                           <>
                             <Edit className="h-4 w-4 mr-2" />
-                            Edit Track
+                            Edit {session.editingTrackType || session.currentTrackType}
                           </>
                         ) : session.progress < session.totalTracks ? (
                           <>
