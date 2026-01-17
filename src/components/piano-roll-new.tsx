@@ -659,6 +659,14 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                   {formatTime(currentPosition)}
                 </div>
                 <Button
+                  onClick={() => onSave?.(notes)}
+                  size="sm"
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium shadow-lg shadow-purple-500/30"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Save
+                </Button>
+                <Button
                   variant="outline"
                   size="sm"
                   onClick={onClose}
@@ -705,17 +713,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                   </button>
                 ))}
               </div>
-
-              <div className="pt-4 border-t border-slate-600 mt-4 space-y-2">
-                <Button
-                  onClick={() => onSave?.(notes)}
-                  size="sm"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Save Notes
-                </Button>
-              </div>
             </div>
 
             {/* Right - Piano Roll Grid */}
@@ -732,10 +729,11 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                 {/* 时间线网格 - 使用绝对定位 */}
                 <div className="absolute inset-0">
                   {/* 钢琴键占位 */}
-                  <div className="absolute left-0 top-0 bottom-0 bg-slate-800 border-r border-slate-600" style={{ width: `${PIANO_KEY_WIDTH}px` }} />
+                  <div className="absolute left-0 top-0 bottom-0 bg-slate-800" style={{ width: `${PIANO_KEY_WIDTH}px` }} />
                   
                   {/* 网格线区域 */}
                   <div className="absolute" style={{ left: `${PIANO_KEY_WIDTH}px`, right: 0, top: 0, bottom: 0 }}>
+                    {/* 第一个小节线在0%位置，对应琴键右侧 */}
                     {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
                       // 小节线：每16个16分音符（即每4拍）
                       const isBarLine = i % (BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT) === 0;
@@ -791,7 +789,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
               <div className="flex-1 flex overflow-hidden relative">
                 {/* Piano Keys */}
                 <div 
-                  className="bg-slate-800 border-r border-slate-600 overflow-hidden flex-shrink-0" 
+                  className="bg-slate-800 overflow-hidden flex-shrink-0" 
                   style={{ width: `${PIANO_KEY_WIDTH}px` }}
                 >
                   <div className="relative h-full">

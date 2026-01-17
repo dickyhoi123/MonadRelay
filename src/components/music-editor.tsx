@@ -151,18 +151,34 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
     setIsPlaying(true);
     let position = currentBeat;
 
-    // 找到需要播放的音频片段
+    // 找到需要播放的音频片段和钢琴音符
     const clipsToPlay: { clip: AudioClip; track: Track }[] = [];
-    tracks.forEach(track => {
+    const pianoNotesToPlay: { note: PianoNote; track: Track; clip: AudioClip }[] = [];
+    
+    tracks.forEach((track, trackIndex) => {
       if (track.isMuted) return;
       track.clips.forEach(clip => {
         if (clip.startTime >= position && clip.startTime < TOTAL_BEATS) {
           clipsToPlay.push({ clip, track });
+          
+          // 收集钢琴音符
+          if (clip.pianoNotes && clip.pianoNotes.length > 0) {
+            clip.pianoNotes.forEach(note => {
+              // 将16分音符转换为拍子
+              const noteStartTimeInBeats = note.startTime / 4; // 4个16分音符 = 1拍
+              const clipStartTimeInBeats = clip.startTime;
+              const absoluteStartTime = clipStartTimeInBeats + noteStartTimeInBeats;
+              
+              if (absoluteStartTime >= position && absoluteStartTime < TOTAL_BEATS) {
+                pianoNotesToPlay.push({ note, track, clip });
+              }
+            });
+          }
         }
       });
     });
 
-    // 播放每个片段
+    // 播放音频片段
     for (const { clip, track } of clipsToPlay) {
       if (clip.audioBuffer) {
         const delay = (clip.startTime - position) * 0.5; // 0.5秒/拍
@@ -171,6 +187,27 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
         }, delay * 1000);
       }
     }
+
+    // 播放钢琴音符
+    pianoNotesToPlay.forEach(({ note, track }) => {
+      // 找到该音符所属的clip
+      const clip = track.clips.find(c => c.pianoNotes?.includes(note));
+      if (!clip) return;
+      
+      // 计算音符的延迟时间
+      // clip.startTime是拍子，note.startTime是16分音符
+      // 每拍4个16分音符，每拍0.5秒
+      const absoluteStartTimeInBeats = clip.startTime + note.startTime / 4;
+      const delay = (absoluteStartTimeInBeats - position) * 0.5; // 0.5秒/拍
+      
+      if (delay >= 0) {
+        setTimeout(() => {
+          const frequency = noteToFrequency(note.note, note.octave);
+          const duration = note.duration * 0.125; // 每个16分音符0.125秒
+          audioEngine?.playNote(frequency, duration, note.velocity, 'sine');
+        }, delay * 1000);
+      }
+    });
 
     // 播放指针移动
     playInterval.current = setInterval(() => {
