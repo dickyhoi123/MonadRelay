@@ -111,10 +111,26 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   const pendingTimeouts = useRef<number[]>([]);
   const playedNotes = useRef<Set<string>>(new Set());
   const lastCheckedPositionRef = useRef<number>(0);
+  const dragUpdateRef = useRef<number | null>(null);
 
-  // 当initialNotes改变时更新notes状态
+  // 使用ref跟踪initialNotes，避免数组引用变化导致无限循环
+  const prevInitialNotesRef = useRef<PianoNote[]>([]);
   useEffect(() => {
-    setNotes(initialNotes || []);
+    // 比较内容和长度，只有真正变化时才更新
+    const hasChanged = prevInitialNotesRef.current.length !== (initialNotes?.length || 0) ||
+      !prevInitialNotesRef.current.every((note, idx) => {
+        const other = initialNotes?.[idx];
+        return note.id === other?.id &&
+               note.note === other.note &&
+               note.octave === other.octave &&
+               note.startTime === other.startTime &&
+               note.duration === other.duration;
+      });
+
+    if (hasChanged) {
+      setNotes(initialNotes || []);
+      prevInitialNotesRef.current = initialNotes || [];
+    }
   }, [initialNotes]);
 
   const currentInstruments = INSTRUMENT_PRESETS[trackType] || INSTRUMENT_PRESETS.Synth;
@@ -379,17 +395,23 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     e.dataTransfer.setData('text/plain', instrument.id);
   };
 
-  // 处理拖拽在网格上的移动
+  // 处理拖拽在网格上的移动 - 使用ref避免频繁更新
   const handleGridDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
-    
+
     if (gridRef.current && isDraggingInstrument) {
       const rect = gridRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      
-      setDragPreview({ x, y, visible: true });
+
+      // 使用requestAnimationFrame节流更新
+      if (!dragUpdateRef.current) {
+        dragUpdateRef.current = requestAnimationFrame(() => {
+          setDragPreview({ x, y, visible: true });
+          dragUpdateRef.current = null;
+        });
+      }
     }
   };
 
@@ -606,12 +628,15 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     }
   }, [isDragging, isResizing, handleMouseMove, handleMouseUp]);
 
-  // 清理定时器
+  // 清理定时器和动画帧
   useEffect(() => {
     return () => {
       pendingTimeouts.current.forEach(id => clearTimeout(id));
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (dragUpdateRef.current) {
+        cancelAnimationFrame(dragUpdateRef.current);
       }
     };
   }, []);
