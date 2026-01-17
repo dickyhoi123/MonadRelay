@@ -3,13 +3,6 @@
  * 包含合约地址和 ABI
  */
 
-// 硬编码的合约地址（Hardhat 本地测试网）
-export const HARDHAT_ADDRESSES = {
-  trackNFT: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
-  musicSession: '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0',
-  masterComposition: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'
-} as const;
-
 // Monad 测试网合约地址（已部署）
 export const MONAD_TESTNET_ADDRESSES = {
   trackNFT: '0x673562A3De748C8E54Ea50C9b0D04139dAA0e7eE',
@@ -17,17 +10,15 @@ export const MONAD_TESTNET_ADDRESSES = {
   masterComposition: '0x71B32E8E1Ec057E5888300FD34da5E0b23106e2f'
 } as const;
 
-// 当前默认使用 Hardhat 本地测试网
-export const CONTRACT_ADDRESSES = HARDHAT_ADDRESSES;
+// 当前默认使用 Monad 测试网
+export const CONTRACT_ADDRESSES = MONAD_TESTNET_ADDRESSES;
 
 // 根据网络获取合约地址
 export function getContractAddresses(chainId: number) {
-  if (chainId === 31337) {
-    return HARDHAT_ADDRESSES;
-  } else if (chainId === 10143) {
+  if (chainId === 10143) {
     return MONAD_TESTNET_ADDRESSES;
   }
-  return HARDHAT_ADDRESSES; // 默认
+  return MONAD_TESTNET_ADDRESSES; // 默认返回 Monad 测试网
 }
 
 // TrackNFT ABI

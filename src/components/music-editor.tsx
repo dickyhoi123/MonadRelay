@@ -723,8 +723,8 @@ export function MusicEditor({ sessionId, sessionName, trackType, initialTracks, 
 
       // 检查网络
       const chainId = await publicClient?.getChainId();
-      if (chainId !== 31337) {
-        showToast('error', 'Please switch to Hardhat Local network (Chain ID: 31337).');
+      if (chainId !== 10143) {
+        showToast('error', 'Please switch to Monad Testnet network (Chain ID: 10143).');
         setIsSaving(false);
         return;
       }

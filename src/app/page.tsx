@@ -594,10 +594,10 @@ function HomePage() {
           <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-6">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm mb-3">
               <div>
-                <span className="text-slate-400">Chain ID:</span>
-                <span className="text-purple-400 font-mono ml-2">{chainId}</span>
+                <span className="text-slate-400">Network:</span>
+                <span className="text-purple-400 font-mono ml-2">Monad Testnet</span>
                 <span className="text-slate-500 ml-2">
-                  {chainId === 31337 ? '(Hardhat)' : chainId === 10143 ? '(Monad Testnet)' : '(Unknown)'}
+                  (Chain ID: 10143)
                 </span>
               </div>
               <div>
@@ -994,6 +994,21 @@ function HomePage() {
                               <MessageSquare className="h-4 w-4" />
                             </Button>
                           </>
+                        )}
+                      </div>
+
+                      {/* Session Status Hint */}
+                      <div className="text-xs text-center text-slate-500 mt-2">
+                        {session.isFinalized ? (
+                          <span className="text-purple-400">✓ Session finalized</span>
+                        ) : session.progress >= session.totalTracks ? (
+                          !session.masterTokenId ? (
+                            <span className="text-pink-400">🎵 All tracks ready! Mint Master NFT now</span>
+                          ) : (
+                            <span className="text-green-400">✓ Master NFT minted! Token ID: {session.masterTokenId}</span>
+                          )
+                        ) : (
+                          <span>Need {session.totalTracks - session.progress} more track{session.totalTracks - session.progress > 1 ? 's' : ''}</span>
                         )}
                       </div>
                     </div>
