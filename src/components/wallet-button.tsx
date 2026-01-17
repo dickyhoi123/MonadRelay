@@ -16,7 +16,7 @@ export function WalletButton() {
     return `${withoutPrefix.slice(0, 2)}...${withoutPrefix.slice(-2)}`;
   };
 
-  const monadChainId = 41454;
+  const monadChainId = 10143;
 
   return (
     <>

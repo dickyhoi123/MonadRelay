@@ -3,7 +3,7 @@ import { injected, walletConnect } from 'wagmi/connectors';
 
 // 自定义 Monad Testnet 链配置
 export const monadTestnet = {
-  id: 41454,
+  id: 10143,
   name: 'Monad Testnet',
   nativeCurrency: {
     name: 'MON',
@@ -14,7 +14,7 @@ export const monadTestnet = {
     default: { http: ['https://testnet-rpc.monad.xyz'] },
   },
   blockExplorers: {
-    default: { name: 'Monad Explorer', url: 'https://explorer-testnet.monad.xyz' },
+    default: { name: 'Monad Explorer', url: 'https://testnet.monadexplorer.com' },
   },
   testnet: true,
 } as const;
