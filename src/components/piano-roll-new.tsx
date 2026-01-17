@@ -112,6 +112,11 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   const playedNotes = useRef<Set<string>>(new Set());
   const lastCheckedPositionRef = useRef<number>(0);
 
+  // 当initialNotes改变时更新notes状态
+  useEffect(() => {
+    setNotes(initialNotes || []);
+  }, [initialNotes]);
+
   const currentInstruments = INSTRUMENT_PRESETS[trackType] || INSTRUMENT_PRESETS.Synth;
 
   // 计算每个16分音符的毫秒数

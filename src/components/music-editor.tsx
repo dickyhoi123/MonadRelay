@@ -189,17 +189,13 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
     }
 
     // 播放钢琴音符
-    pianoNotesToPlay.forEach(({ note, track }) => {
-      // 找到该音符所属的clip
-      const clip = track.clips.find(c => c.pianoNotes?.includes(note));
-      if (!clip) return;
-      
+    pianoNotesToPlay.forEach(({ note, track, clip }) => {
       // 计算音符的延迟时间
       // clip.startTime是拍子，note.startTime是16分音符
       // 每拍4个16分音符，每拍0.5秒
       const absoluteStartTimeInBeats = clip.startTime + note.startTime / 4;
       const delay = (absoluteStartTimeInBeats - position) * 0.5; // 0.5秒/拍
-      
+
       if (delay >= 0) {
         setTimeout(() => {
           const frequency = noteToFrequency(note.note, note.octave);
@@ -386,7 +382,25 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
       const clip = track.clips.find(c => c.id === clipId);
       setSelectedClipForPiano(clip || null);
     } else {
-      setSelectedClipForPiano(null);
+      // 如果没有指定clip，使用该轨道的第一个clip
+      if (track.clips.length > 0) {
+        setSelectedClipForPiano(track.clips[0]);
+      } else {
+        // 如果没有clip，创建一个新的clip
+        const newClip: AudioClip = {
+          id: `clip-${Date.now()}`,
+          name: 'Piano Notes',
+          startTime: 0,
+          duration: 8,
+          color: track.color
+        };
+        setTracks(prev => prev.map(t =>
+          t.id === trackId
+            ? { ...t, clips: [newClip, ...t.clips] }
+            : t
+        ));
+        setSelectedClipForPiano(newClip);
+      }
     }
     setPianoRollOpen(true);
   };
