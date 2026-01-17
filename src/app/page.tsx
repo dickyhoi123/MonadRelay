@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -86,7 +86,12 @@ const trackColors: Record<TrackType, string> = {
 
 function HomePage() {
   const { isConnected, address } = useWallet();
+  const [mounted, setMounted] = useState(false);
   const [sessions, setSessions] = useState<Session[]>(mockSessions);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showWalletDialog, setShowWalletDialog] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -336,8 +341,13 @@ function HomePage() {
           </div>
 
           <TabsContent value="active" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {sessions.filter(s => !s.isFinalized).map((session) => (
+            {!mounted ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {sessions.filter(s => !s.isFinalized).map((session) => (
                 <Card key={session.id} className="bg-slate-900/50 border-slate-800 hover:border-purple-500 transition-all duration-300">
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">
@@ -451,11 +461,17 @@ function HomePage() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="completed">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {!mounted ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {sessions.filter(s => s.isFinalized).map((session) => (
                 <Card key={session.id} className="bg-gradient-to-br from-green-900/30 to-slate-900/50 border-green-800 hover:border-green-500 transition-all duration-300">
                   <CardHeader>
@@ -491,7 +507,8 @@ function HomePage() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 
