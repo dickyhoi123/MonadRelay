@@ -913,6 +913,138 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
           </div>
         </div>
 
+        {/* 音轨预览卡片 */}
+        <Card className="mt-6 bg-slate-900/50 border-slate-800">
+          <CardContent className="p-6">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Music className="h-5 w-5" />
+              Track Overview
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {tracks.map((track) => (
+                <div
+                  key={track.id}
+                  onClick={() => {
+                    // 如果有clip，打开第一个clip的只读视图
+                    if (track.clips.length > 0) {
+                      handleOpenReadonlyPianoRoll(track.id, track.clips[0].id);
+                    }
+                  }}
+                  className={`relative bg-slate-800/50 rounded-xl border-2 transition-all cursor-pointer hover:scale-105 hover:shadow-xl ${
+                    track.id === tracks.find(t => t.type === trackType)?.id
+                      ? 'border-purple-500 shadow-lg shadow-purple-500/20'
+                      : 'border-slate-700 hover:border-slate-500'
+                  }`}
+                >
+                  {/* 音轨头部 */}
+                  <div className="p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-lg"
+                        style={{ backgroundColor: track.color }}
+                      >
+                        {track.type === 'Drum' && '🥁'}
+                        {track.type === 'Bass' && '🎸'}
+                        {track.type === 'Synth' && '🎹'}
+                        {track.type === 'Vocal' && '🎤'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-white truncate">{track.name}</h4>
+                        <p className="text-xs text-slate-400">{track.clips.length} clip{track.clips.length !== 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
+
+                    {/* 缩略图 */}
+                    <div className="relative h-20 bg-slate-900 rounded-lg overflow-hidden">
+                      {/* 网格线 */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className="absolute top-0 bottom-0 w-px bg-slate-700/30"
+                            style={{ left: `${(i / 4) * 100}%` }}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Clip缩略图 */}
+                      {track.clips.length > 0 ? (
+                        track.clips.map((clip) => (
+                          <div
+                            key={clip.id}
+                            className="absolute h-full top-0 rounded transition-all"
+                            style={{
+                              left: `${(clip.startTime / TOTAL_BEATS) * 100}%`,
+                              width: `${(clip.duration / TOTAL_BEATS) * 100}%`,
+                              backgroundColor: `${clip.color}40`,
+                              borderLeft: `3px solid ${clip.color}`,
+                              borderRight: `3px solid ${clip.color}`,
+                              minWidth: '8px'
+                            }}
+                          >
+                            {/* 音符分布预览 */}
+                            {clip.pianoNotes && clip.pianoNotes.length > 0 && (
+                              <div className="absolute inset-0 flex">
+                                {clip.pianoNotes.slice(0, 10).map((note, idx) => {
+                                  const noteIndex = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].indexOf(note.note);
+                                  const octaveOffset = (note.octave - 3) * 12;
+                                  const noteTotalIndex = octaveOffset + noteIndex;
+                                  const totalNotes = 3 * 12;
+                                  const reversedIndex = totalNotes - 1 - noteTotalIndex;
+                                  const topPercent = (reversedIndex / totalNotes) * 100;
+                                  const heightPercent = (1 / totalNotes) * 100;
+
+                                  return (
+                                    <div
+                                      key={note.id}
+                                      className="absolute border border-white/20 rounded-sm"
+                                      style={{
+                                        left: `${(note.startTime / 32) * 100}%`,
+                                        width: `${(note.duration / 32) * 100}%`,
+                                        top: `${topPercent}%`,
+                                        height: `${heightPercent}%`,
+                                        backgroundColor: clip.color,
+                                        minWidth: '2px'
+                                      }}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-xs">
+                          No clips
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 播放/静音指示器 */}
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    {track.isMuted && (
+                      <div className="px-2 py-0.5 bg-red-500/20 border border-red-500/30 rounded text-[10px] text-red-400 font-medium">
+                        M
+                      </div>
+                    )}
+                    {track.isSolo && (
+                      <div className="px-2 py-0.5 bg-yellow-500/20 border border-yellow-500/30 rounded text-[10px] text-yellow-400 font-medium">
+                        S
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 查看提示 */}
+                  <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Eye className="h-4 w-4 text-slate-400" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* 快捷提示 */}
         <Card className="mt-6 bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-purple-800">
           <CardContent className="p-6">

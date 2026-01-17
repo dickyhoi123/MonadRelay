@@ -288,6 +288,9 @@ function HomePage() {
               <TabsTrigger value="active" className="data-[state=active]:bg-purple-600">
                 Active Sessions
               </TabsTrigger>
+              <TabsTrigger value="participating" className="data-[state=active]:bg-purple-600">
+                Participating
+              </TabsTrigger>
               <TabsTrigger value="completed" className="data-[state=active]:bg-purple-600">
                 Completed
               </TabsTrigger>
@@ -408,12 +411,16 @@ function HomePage() {
                         return (
                           <div
                             key={track}
+                            style={isEditing ? {
+                              background: 'linear-gradient(90deg, #9333ea, #ec4899, #9333ea)',
+                              backgroundSize: '200% 100%',
+                              animation: 'glow-pulse 3s ease-in-out infinite'
+                            } : {}}
                             className={`flex-1 text-center py-2 rounded text-xs font-medium transition-all ${
                               isCompleted ? `${trackColors[track]} text-white` :
-                              isEditing ? 'bg-purple-600 text-white animate-pulse' :
                               isCurrent ? 'bg-purple-600 text-white' :
                               'bg-slate-800 text-slate-500'
-                            }`}
+                            } ${isEditing ? 'text-white' : ''}`}
                           >
                             {track}
                           </div>
@@ -495,6 +502,132 @@ function HomePage() {
             )}
           </TabsContent>
 
+          <TabsContent value="participating" className="space-y-6">
+            {!mounted || !address ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="text-slate-400 text-lg">Connect your wallet to see your participated sessions</div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {sessions.filter(s => !s.isFinalized && s.contributors.includes(address)).map((session) => (
+                <Card key={session.id} className="bg-slate-900/50 border-slate-800 hover:border-purple-500 transition-all duration-300">
+                  <CardHeader>
+                    <div className="flex items-start justify-between mb-2">
+                      <CardTitle className="text-white text-xl">{session.name}</CardTitle>
+                      <Badge variant="outline" className="border-purple-500 text-purple-400">
+                        {session.genre}
+                      </Badge>
+                    </div>
+                    <CardDescription className="text-slate-400">
+                      {session.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Progress */}
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-slate-400">Progress</span>
+                        <span className="text-white font-medium">{session.progress}/{session.totalTracks}</span>
+                      </div>
+                      <Progress value={(session.progress / session.totalTracks) * 100} className="h-2" />
+                    </div>
+
+                    {/* Track Types */}
+                    <div className="flex gap-2">
+                      {trackTypes.map((track, idx) => {
+                        const isCompleted = idx < session.progress;
+                        const isCurrent = idx === session.progress;
+                        const isPending = idx > session.progress;
+                        const isEditing = session.editingTrackType === track;
+                        const userContributed = isCompleted; // 简化：已完成的表示用户已贡献
+
+                        return (
+                          <div
+                            key={track}
+                            style={isEditing ? {
+                              background: 'linear-gradient(90deg, #9333ea, #ec4899, #9333ea)',
+                              backgroundSize: '200% 100%',
+                              animation: 'glow-pulse 3s ease-in-out infinite'
+                            } : {}}
+                            className={`flex-1 text-center py-2 rounded text-xs font-medium transition-all ${
+                              userContributed ? `${trackColors[track]} text-white` :
+                              isCurrent ? 'bg-purple-600 text-white' :
+                              'bg-slate-800 text-slate-500'
+                            } ${isEditing ? 'text-white' : ''}`}
+                          >
+                            {track}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Session Info */}
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-400">{formatTime(session.createdAt)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Music className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-400">{session.bpm} BPM</span>
+                      </div>
+                    </div>
+
+                    {/* Contributors */}
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-slate-400" />
+                      <div className="flex -space-x-2">
+                        {session.contributors.slice(0, 3).map((contributor, idx) => (
+                          <div
+                            key={idx}
+                            className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold border-2 border-slate-900"
+                            title={contributor}
+                          >
+                            {formatAddress(contributor)}
+                          </div>
+                        ))}
+                        {session.contributors.length > 3 && (
+                          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white text-xs font-bold border-2 border-slate-900">
+                            +{session.contributors.length - 3}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleJoinSession(session.id)}
+                        disabled={!isConnected || loadingStates[session.id] || session.isFinalized || session.progress >= session.totalTracks}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700"
+                      >
+                        {loadingStates[session.id] ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Joining...
+                          </>
+                        ) : (
+                          <>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit {session.editingTrackType || session.currentTrackType}
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedSessionForChat(session)}
+                        className="border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              </div>
+            )}
+          </TabsContent>
+
           <TabsContent value="completed">
             {!mounted ? (
               <div className="flex items-center justify-center py-12">
@@ -503,26 +636,26 @@ function HomePage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {sessions.filter(s => s.isFinalized).map((session) => (
-                <Card key={session.id} className="bg-gradient-to-br from-green-900/30 to-slate-900/50 border-green-800 hover:border-green-500 transition-all duration-300">
+                <Card key={session.id} className="bg-slate-900/50 border-slate-800 hover:border-purple-500 transition-all duration-300">
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">
                       <CardTitle className="text-white text-xl">{session.name}</CardTitle>
-                      <Badge className="bg-green-600">✓ Completed</Badge>
+                      <Badge className="bg-purple-600">✓ Completed</Badge>
                     </div>
                     <CardDescription className="text-slate-400">
                       {session.description}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="bg-green-600/20 border border-green-500/30 rounded-lg p-4 text-center">
-                      <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-2" />
-                      <p className="text-green-300 font-medium">Master NFT Minted</p>
+                    <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-lg p-4 text-center">
+                      <CheckCircle className="h-12 w-12 text-purple-400 mx-auto mb-2" />
+                      <p className="text-purple-300 font-medium">Master NFT Minted</p>
                       <p className="text-sm text-slate-400 mt-1">
                         {session.contributors.length} contributors
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" className="flex-1 border-green-600 text-green-400 hover:bg-green-600 hover:text-white">
+                      <Button variant="outline" className="flex-1 border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white">
                         <Music className="h-4 w-4 mr-2" />
                         Listen
                       </Button>
