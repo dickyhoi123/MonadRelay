@@ -10,7 +10,9 @@ export function WalletButton() {
   const { disconnect } = useDisconnect();
 
   const formatAddress = (addr: string) => {
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+    // 从 0x 后面开始显示，只显示2位
+    const withoutPrefix = addr.startsWith('0x') ? addr.slice(2) : addr;
+    return `${withoutPrefix.slice(0, 2)}...${withoutPrefix.slice(-2)}`;
   };
 
   return (

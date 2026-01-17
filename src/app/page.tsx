@@ -608,16 +608,22 @@ function HomePage() {
           </TabsContent>
         </Tabs>
 
-        {/* Chat Dialog */}
+        {/* Chat Dialog - Fixed window without Dialog wrapper */}
         {selectedSessionForChat && (
-          <Dialog open={!!selectedSessionForChat} onOpenChange={() => setSelectedSessionForChat(null)}>
-            <DialogContent className="bg-slate-900 border-slate-800 max-w-4xl h-[600px] p-0">
-              <ChatRoom 
-                sessionId={selectedSessionForChat.id} 
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <div className="relative bg-slate-900 border border-slate-800 rounded-lg overflow-hidden max-w-4xl w-full h-[600px] shadow-2xl">
+              <button
+                onClick={() => setSelectedSessionForChat(null)}
+                className="absolute top-4 right-4 z-10 p-2 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <ChatRoom
+                sessionId={selectedSessionForChat.id}
                 sessionName={selectedSessionForChat.name}
               />
-            </DialogContent>
-          </Dialog>
+            </div>
+          </div>
         )}
 
         {/* Wallet Required Dialog */}

@@ -137,7 +137,9 @@ export function ChatRoom({ sessionId, sessionName }: { sessionId: number; sessio
   };
 
   const formatAddress = (userId: string) => {
-    return userId.slice(0, 6) + userId.slice(-4);
+    // 从 0x 后面开始显示，只显示2位
+    const withoutPrefix = userId.startsWith('0x') ? userId.slice(2) : userId;
+    return `${withoutPrefix.slice(0, 2)}...${withoutPrefix.slice(-2)}`;
   };
 
   const getAvatarColor = (userId: string) => {

@@ -1,38 +1,11 @@
 'use client';
 
 import { createContext, useContext, ReactNode } from 'react';
-import { createConfig, http } from 'wagmi';
-import { injected, walletConnect } from 'wagmi/connectors';
-
-// 自定义 Monad Testnet 链配置
-const monadTestnet = {
-  id: 41454,
-  name: 'Monad Testnet',
-  nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
-  rpcUrls: {
-    default: { http: ['https://testnet-rpc.monad.xyz'] },
-  },
-  blockExplorers: {
-    default: { name: 'Monad Explorer', url: 'https://explorer-testnet.monad.xyz' },
-  },
-  testnet: true,
-} as const;
-
-// 配置
-export const config = createConfig({
-  chains: [monadTestnet],
-  connectors: [
-    injected(),
-    walletConnect({ projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo' }),
-  ],
-  transports: {
-    [monadTestnet.id]: http(),
-  },
-});
+import { useAccount } from 'wagmi';
 
 interface WalletContextType {
   isConnected: boolean;
-  address: string | null;
+  address: `0x${string}` | null;
 }
 
 const WalletContext = createContext<WalletContextType>({
@@ -41,8 +14,10 @@ const WalletContext = createContext<WalletContextType>({
 });
 
 export function WalletProvider({ children }: { children: ReactNode }) {
+  const { isConnected, address } = useAccount();
+
   return (
-    <WalletContext.Provider value={{ isConnected: false, address: null }}>
+    <WalletContext.Provider value={{ isConnected, address: address || null }}>
       {children}
     </WalletContext.Provider>
   );
