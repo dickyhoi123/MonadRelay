@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
-import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X } from 'lucide-react';
+import { Play, Music, Users, Plus, Clock, CheckCircle, Loader2, MessageSquare, Edit, Wallet, X, ArrowLeft } from 'lucide-react';
 import { useWallet } from '@/contexts/wallet-context';
 import { WalletButton } from '@/components/wallet-button';
 import { MusicEditor } from '@/components/music-editor';
@@ -728,9 +728,10 @@ function HomePage() {
           <div className="fixed inset-0 z-50 bg-slate-950 overflow-auto">
             <button
               onClick={handleEditorCancel}
-              className="absolute top-6 right-6 z-50 p-3 bg-slate-900 hover:bg-slate-800 rounded-full border border-slate-700 text-slate-400 hover:text-white transition-all shadow-lg"
+              className="absolute top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 bg-slate-900/80 hover:bg-slate-800/80 backdrop-blur-sm rounded-lg border border-slate-700 text-slate-300 hover:text-white transition-all shadow-lg"
             >
-              <X className="h-6 w-6" />
+              <ArrowLeft className="h-5 w-5" />
+              <span className="text-sm font-medium">Back</span>
             </button>
             <MusicEditor
               sessionId={editingSession.id}
