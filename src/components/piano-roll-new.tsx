@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, MouseEvent, useEffect, DragEvent } from 'react';
+import { useState, useRef, MouseEvent, useEffect, DragEvent, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { X, Play, Plus, Volume2, GripVertical, Edit2, Trash2 } from 'lucide-react';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
@@ -76,12 +76,14 @@ const WHITE_NOTES: NoteType[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const BLACK_NOTES: NoteType[] = ['C#', 'D#', 'F#', 'G#', 'A#'];
 
 const BPM = 120;
+const PIANO_KEY_WIDTH = 64; // 4rem = 64px
 
 export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, onSave, initialNotes = [] }: PianoRollProps) {
   const [notes, setNotes] = useState<PianoNote[]>(initialNotes);
   const [selectedInstrument, setSelectedInstrument] = useState<InstrumentPreset | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
+  const [smoothPosition, setSmoothPosition] = useState(0); // 平滑播放位置（浮点数）
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [draggedNote, setDraggedNote] = useState<{ note: PianoNote; startX: number; startY: number; startNote?: PianoNote } | null>(null);
@@ -103,13 +105,22 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   const audioEngine = useAudioEngine();
   const gridRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
-  const playInterval = useRef<NodeJS.Timeout | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const playStartTimeRef = useRef<number | null>(null);
+  const playStartSixteenthRef = useRef<number>(0);
   const pendingTimeouts = useRef<number[]>([]);
+  const playedNotes = useRef<Set<string>>(new Set());
+  const lastCheckedPositionRef = useRef<number>(0);
 
   const currentInstruments = INSTRUMENT_PRESETS[trackType] || INSTRUMENT_PRESETS.Synth;
 
+  // 计算每个16分音符的毫秒数
+  const getSixteenthNoteDuration = () => {
+    return (60 / BPM) / SIXTEENTH_NOTES_PER_BEAT * 1000;
+  };
+
   // 播放单个音符（根据音色类型）
-  const playNoteSound = (note: PianoNote) => {
+  const playNoteSound = useCallback((note: PianoNote) => {
     if (!audioEngine) return;
 
     const instrument = [...Object.values(INSTRUMENT_PRESETS).flat()].find(i => i.id === note.instrumentType);
@@ -125,10 +136,10 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     } else {
       audioEngine.playNote(frequency, duration, note.velocity, instrument.oscillatorType || 'sine');
     }
-  };
+  }, [audioEngine]);
 
   // 播放鼓声
-  const playDrumSound = (drumType: string, duration: number) => {
+  const playDrumSound = useCallback((drumType: string, duration: number) => {
     if (!audioEngine || !audioEngine['audioContext']) return;
     const ctx = audioEngine['audioContext'];
 
@@ -219,10 +230,10 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
         crash.start();
         break;
     }
-  };
+  }, [audioEngine]);
 
   // 播放人声合唱
-  const playVocalSound = (frequency: number, duration: number, type: 'sine' | 'square' | 'sawtooth' | 'triangle', velocity: number) => {
+  const playVocalSound = useCallback((frequency: number, duration: number, type: 'sine' | 'square' | 'sawtooth' | 'triangle', velocity: number) => {
     if (!audioEngine || !audioEngine['audioContext']) return;
     const ctx = audioEngine['audioContext'];
 
@@ -249,50 +260,81 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
 
     gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
     gainNode.connect(ctx.destination);
-  };
+  }, [audioEngine]);
 
-  // 播放控制
-  const handlePlay = () => {
+  // 播放控制 - 使用requestAnimationFrame实现平滑播放
+  const handlePlay = useCallback(() => {
     if (isPlaying) {
+      // 停止播放
       setIsPlaying(false);
-      if (playInterval.current) {
-        clearInterval(playInterval.current);
-        playInterval.current = null;
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
       pendingTimeouts.current.forEach(id => clearTimeout(id));
       pendingTimeouts.current = [];
+      playedNotes.current.clear();
+      lastCheckedPositionRef.current = 0;
       return;
     }
 
+    // 开始播放
     setIsPlaying(true);
-    let position = currentPosition;
+    playStartTimeRef.current = performance.now();
+    playStartSixteenthRef.current = currentPosition;
+    playedNotes.current.clear();
+    lastCheckedPositionRef.current = currentPosition;
 
-    notes.forEach((note) => {
-      if (note.startTime >= position && note.startTime < position + TOTAL_SIXTEENTH_NOTES) {
-        const delay = (note.startTime - position) * (60 / BPM) / SIXTEENTH_NOTES_PER_BEAT;
-        const timeoutId = window.setTimeout(() => {
-          if (isPlaying) {
-            playNoteSound(note);
-          }
-        }, delay * 1000);
-        pendingTimeouts.current.push(timeoutId);
-      }
-    });
+    // 使用requestAnimationFrame实现平滑播放
+    const animate = () => {
+      if (!playStartTimeRef.current) return;
 
-    playInterval.current = setInterval(() => {
-      position += 1;
-      if (position >= TOTAL_SIXTEENTH_NOTES) {
+      const elapsed = performance.now() - playStartTimeRef.current;
+      const sixteenthNoteDuration = getSixteenthNoteDuration();
+      const newSmoothPosition = playStartSixteenthRef.current + (elapsed / sixteenthNoteDuration);
+      const newPosition = Math.floor(newSmoothPosition);
+
+      // 检查是否播放结束
+      if (newSmoothPosition >= TOTAL_SIXTEENTH_NOTES) {
         setIsPlaying(false);
         setCurrentPosition(0);
-        if (playInterval.current) {
-          clearInterval(playInterval.current);
-          playInterval.current = null;
+        setSmoothPosition(0);
+        playStartTimeRef.current = null;
+        playedNotes.current.clear();
+        lastCheckedPositionRef.current = 0;
+        pendingTimeouts.current.forEach(id => clearTimeout(id));
+        pendingTimeouts.current = [];
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
         }
-      } else {
-        setCurrentPosition(position);
+        return;
       }
-    }, (60 / BPM) / SIXTEENTH_NOTES_PER_BEAT * 1000);
-  };
+
+      setCurrentPosition(newPosition);
+      setSmoothPosition(newSmoothPosition);
+
+      // 播放当前音符
+      notes.forEach((note) => {
+        // 检查音符是否应该在当前位置播放
+        // 条件：音符开始时间在上次检查位置和当前位置之间，且未播放过
+        if (!playedNotes.current.has(note.id) && 
+            note.startTime >= playStartSixteenthRef.current &&
+            note.startTime >= lastCheckedPositionRef.current && 
+            note.startTime < newSmoothPosition) {
+          playedNotes.current.add(note.id);
+          playNoteSound(note);
+        }
+      });
+
+      // 更新上次检查的位置
+      lastCheckedPositionRef.current = newSmoothPosition;
+
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+  }, [isPlaying, currentPosition, notes, playNoteSound]);
 
   // 点击钢琴键播放音符
   const handlePianoKeyClick = (note: NoteType, octave: number) => {
@@ -311,7 +353,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   };
 
   // 获取音符在网格中的位置
-  const getNoteGridPosition = (note: PianoNote) => {
+  const getNoteGridPosition = useCallback((note: PianoNote) => {
     const noteIndex = (octave: number, note: NoteType) => {
       const octaveOffset = (octave - OCTAVES[0]) * 12;
       const noteOffset = PIANO_NOTES.indexOf(note);
@@ -321,7 +363,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     const noteTotalIndex = noteIndex(note.octave, note.note);
     const reversedIndex = totalNotes - 1 - noteTotalIndex;
     return reversedIndex;
-  };
+  }, []);
 
   // 从音源库开始拖拽
   const handleInstrumentDragStart = (e: DragEvent<HTMLButtonElement>, instrument: InstrumentPreset) => {
@@ -401,59 +443,62 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   };
 
   // 时间线拖拽处理
-  const handleTimelineMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+  const handleTimelineMouseDown = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (!timelineRef.current) return;
     setIsDraggingTimeline(true);
     updateTimelinePosition(e);
-  };
+  }, []);
 
-  const updateTimelinePosition = (e: MouseEvent<HTMLDivElement>) => {
+  const updateTimelinePosition = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (!timelineRef.current) return;
     
     const rect = timelineRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - 64; // 减去钢琴键宽度
-    const width = rect.width - 64;
+    const x = e.clientX - rect.left - PIANO_KEY_WIDTH;
+    const width = rect.width - PIANO_KEY_WIDTH;
     
     const newPosition = Math.floor((x / width) * TOTAL_SIXTEENTH_NOTES);
-    setCurrentPosition(Math.max(0, Math.min(TOTAL_SIXTEENTH_NOTES - 1, newPosition)));
-  };
+    const clampedPosition = Math.max(0, Math.min(TOTAL_SIXTEENTH_NOTES - 1, newPosition));
+    setCurrentPosition(clampedPosition);
+    setSmoothPosition(clampedPosition);
+  }, []);
 
-  const handleTimelineMouseUp = () => {
+  const handleTimelineMouseUp = useCallback(() => {
     setIsDraggingTimeline(false);
-  };
+  }, []);
 
-  const handleTimelineMouseLeave = () => {
+  const handleTimelineMouseLeave = useCallback(() => {
     setIsDraggingTimeline(false);
-  };
+  }, []);
 
   // 时间线移动处理（用于拖拽）
-  const handleTimelineMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+  const handleTimelineMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (isDraggingTimeline) {
       updateTimelinePosition(e);
     }
-  };
+  }, [isDraggingTimeline, updateTimelinePosition]);
 
   // 双击编辑音符
-  const handleNoteDoubleClick = (note: PianoNote) => {
+  const handleNoteDoubleClick = useCallback((note: PianoNote) => {
     setEditingNote(note);
     setEditDialogOpen(true);
-  };
+  }, []);
 
   // 删除音符
-  const handleNoteDelete = (noteId: string) => {
+  const handleNoteDelete = useCallback((noteId: string) => {
     setNotes(notes.filter(n => n.id !== noteId));
-  };
+  }, [notes]);
 
   // 保存编辑的音符
-  const handleSaveNoteEdit = (editedNote: PianoNote) => {
+  const handleSaveNoteEdit = useCallback((editedNote: PianoNote) => {
     setNotes(notes.map(n => n.id === editedNote.id ? editedNote : n));
     setEditDialogOpen(false);
     setEditingNote(null);
-  };
+  }, [notes]);
 
   // 拖拽音符移动
-  const handleNoteMouseDown = (e: MouseEvent<HTMLDivElement>, note: PianoNote) => {
+  const handleNoteMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, note: PianoNote) => {
     e.stopPropagation();
+    e.preventDefault();
     setIsDragging(true);
     setDraggedNote({
       note,
@@ -461,19 +506,20 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
       startY: e.clientY,
       startNote: { ...note }
     });
-  };
+  }, []);
 
   // 拖拽音符调整时值
-  const handleNoteResizeMouseDown = (e: MouseEvent<HTMLDivElement>, note: PianoNote) => {
+  const handleNoteResizeMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, note: PianoNote) => {
     e.stopPropagation();
+    e.preventDefault();
     setIsResizing(true);
     setResizeNote({
       note,
       startX: e.clientX
     });
-  };
+  }, []);
 
-  const handleMouseMove = (e: globalThis.MouseEvent) => {
+  const handleMouseMove = useCallback((e: globalThis.MouseEvent) => {
     if (!gridRef.current) return;
 
     if (isDragging && draggedNote && draggedNote.startNote) {
@@ -499,7 +545,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
       const noteOctaveIndex = Math.floor(reversedIndex / 12);
       const noteIndexInOctave = reversedIndex % 12;
 
-      setNotes(notes.map(n => {
+      setNotes(prevNotes => prevNotes.map(n => {
         if (n.id === draggedNote.note.id) {
           return {
             ...n,
@@ -510,12 +556,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
         }
         return n;
       }));
-
-      setDraggedNote({
-        ...draggedNote,
-        startX: e.clientX,
-        startY: e.clientY
-      });
     }
 
     if (isResizing && resizeNote) {
@@ -529,27 +569,23 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
         resizeNote.note.duration + deltaSixteenthNotes
       ));
 
-      setNotes(notes.map(n => {
+      setNotes(prevNotes => prevNotes.map(n => {
         if (n.id === resizeNote.note.id) {
           return { ...n, duration: newDuration };
         }
         return n;
       }));
-
-      setResizeNote({
-        note: { ...resizeNote.note, duration: newDuration },
-        startX: e.clientX
-      });
     }
-  };
+  }, [isDragging, isResizing, draggedNote, resizeNote, getNoteGridPosition]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDragging(false);
     setIsResizing(false);
     setDraggedNote(null);
     setResizeNote(null);
-  };
+  }, []);
 
+  // 鼠标事件监听
   useEffect(() => {
     if (isDragging || isResizing) {
       document.body.style.userSelect = 'none';
@@ -563,11 +599,15 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, draggedNote, resizeNote]);
+  }, [isDragging, isResizing, handleMouseMove, handleMouseUp]);
 
+  // 清理定时器
   useEffect(() => {
     return () => {
       pendingTimeouts.current.forEach(id => clearTimeout(id));
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, []);
 
@@ -689,10 +729,13 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                 onMouseUp={handleTimelineMouseUp}
                 onMouseLeave={handleTimelineMouseLeave}
               >
-                <div className="w-16 flex-shrink-0" />
-                <div className="flex-1 h-full relative">
-                  {/* 时间线网格 - 使用flex布局确保精确对齐 */}
-                  <div className="absolute inset-0 flex">
+                {/* 时间线网格 - 使用绝对定位 */}
+                <div className="absolute inset-0">
+                  {/* 钢琴键占位 */}
+                  <div className="absolute left-0 top-0 bottom-0 bg-slate-800 border-r border-slate-600" style={{ width: `${PIANO_KEY_WIDTH}px` }} />
+                  
+                  {/* 网格线区域 */}
+                  <div className="absolute" style={{ left: `${PIANO_KEY_WIDTH}px`, right: 0, top: 0, bottom: 0 }}>
                     {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
                       // 小节线：每16个16分音符（即每4拍）
                       const isBarLine = i % (BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT) === 0;
@@ -702,14 +745,17 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                       return (
                         <div
                           key={`timeline-v-${i}`}
-                          className={`h-full border-r flex-shrink-0 ${
+                          className={`absolute top-0 bottom-0 border-r ${
                             isBarLine 
                               ? 'border-purple-500/60' 
                               : isBeatLine 
                                 ? 'border-purple-500/30' 
                                 : 'border-slate-700/30'
                           }`}
-                          style={{ width: `${100 / TOTAL_SIXTEENTH_NOTES}%` }}
+                          style={{ 
+                            left: `${(i / TOTAL_SIXTEENTH_NOTES) * 100}%`,
+                            width: `${100 / TOTAL_SIXTEENTH_NOTES}%`
+                          }}
                         />
                       );
                     })}
@@ -722,7 +768,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                         key={i}
                         className="absolute text-xs text-slate-200 font-medium whitespace-nowrap"
                         style={{ 
-                          left: `${(i * SIXTEENTH_NOTES_PER_BEAT) / TOTAL_SIXTEENTH_NOTES * 100}%`,
+                          left: `calc(${PIANO_KEY_WIDTH}px + ${(i * SIXTEENTH_NOTES_PER_BEAT) / TOTAL_SIXTEENTH_NOTES * 100}%)`,
                           transform: 'translateX(-50%)'
                         }}
                       >
@@ -731,10 +777,10 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                     ))}
                   </div>
                   
-                  {/* 播放头 */}
+                  {/* 播放头 - 使用平滑位置 */}
                   <div
                     className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 pointer-events-none transition-none"
-                    style={{ left: `${(currentPosition / TOTAL_SIXTEENTH_NOTES) * 100}%` }}
+                    style={{ left: `calc(${PIANO_KEY_WIDTH}px + ${(smoothPosition / TOTAL_SIXTEENTH_NOTES) * 100}%)` }}
                   >
                     <div className="absolute -top-1 -left-1.5 w-3 h-3 bg-red-500 rounded-full shadow-lg shadow-red-500/50" />
                   </div>
@@ -744,7 +790,10 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
               {/* Piano Keys + Note Grid */}
               <div className="flex-1 flex overflow-hidden relative">
                 {/* Piano Keys */}
-                <div className="w-16 bg-slate-800 border-r border-slate-600 overflow-hidden flex-shrink-0">
+                <div 
+                  className="bg-slate-800 border-r border-slate-600 overflow-hidden flex-shrink-0" 
+                  style={{ width: `${PIANO_KEY_WIDTH}px` }}
+                >
                   <div className="relative h-full">
                     {OCTAVES.map((octave) => (
                       PIANO_NOTES.map((note, noteIndex) => {
@@ -798,34 +847,32 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                   onDragLeave={handleGridDragLeave}
                   onDrop={handleGridDrop}
                 >
-                  {/* Grid Lines - 使用flex布局确保精确对齐 */}
+                  {/* Grid Lines - 使用绝对定位确保精确对齐 */}
                   <div className="absolute inset-0 pointer-events-none z-0">
                     {/* 垂直线 - 与时间线完全相同的布局 */}
-                    <div className="absolute inset-0 flex">
-                      {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
-                        // 小节线：每16个16分音符（即每4拍）
-                        const isBarLine = i % (BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT) === 0;
-                        // 拍线：每4个16分音符（即每拍）
-                        const isBeatLine = i % SIXTEENTH_NOTES_PER_BEAT === 0;
-                        
-                        return (
-                          <div
-                            key={`grid-v-${i}`}
-                            className={`absolute top-0 bottom-0 border-r flex-shrink-0 ${
-                              isBarLine 
-                                ? 'border-purple-500/30' 
-                                : isBeatLine 
-                                  ? 'border-purple-500/15' 
-                                  : 'border-slate-800/10'
-                            }`}
-                            style={{ 
-                              left: `${(i / TOTAL_SIXTEENTH_NOTES) * 100}%`,
-                              width: `${100 / TOTAL_SIXTEENTH_NOTES}%`
-                            }}
-                          />
-                        );
-                      })}
-                    </div>
+                    {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
+                      // 小节线：每16个16分音符（即每4拍）
+                      const isBarLine = i % (BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT) === 0;
+                      // 拍线：每4个16分音符（即每拍）
+                      const isBeatLine = i % SIXTEENTH_NOTES_PER_BEAT === 0;
+                      
+                      return (
+                        <div
+                          key={`grid-v-${i}`}
+                          className={`absolute top-0 bottom-0 border-r ${
+                            isBarLine 
+                              ? 'border-purple-500/30' 
+                              : isBeatLine 
+                                ? 'border-purple-500/15' 
+                                : 'border-slate-800/10'
+                          }`}
+                          style={{ 
+                            left: `${(i / TOTAL_SIXTEENTH_NOTES) * 100}%`,
+                            width: `${100 / TOTAL_SIXTEENTH_NOTES}%`
+                          }}
+                        />
+                      );
+                    })}
 
                     {/* 水平线 */}
                     {Array.from({ length: PIANO_NOTES.length * OCTAVES.length }).map((_, i) => {
@@ -914,7 +961,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
         <NoteEditDialog
           note={editingNote}
           instruments={currentInstruments}
-          allInstruments={INSTRUMENT_PRESETS}
           onSave={handleSaveNoteEdit}
           onDelete={handleNoteDelete}
           onClose={() => {
@@ -931,13 +977,12 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
 interface NoteEditDialogProps {
   note: PianoNote;
   instruments: InstrumentPreset[];
-  allInstruments: Record<string, InstrumentPreset[]>;
   onSave: (note: PianoNote) => void;
   onDelete: (noteId: string) => void;
   onClose: () => void;
 }
 
-function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, onClose }: NoteEditDialogProps) {
+function NoteEditDialog({ note, instruments, onSave, onDelete, onClose }: NoteEditDialogProps) {
   const [editedNote, setEditedNote] = useState<PianoNote>(note);
 
   const formatTimePosition = (sixteenthNoteIndex: number) => {
@@ -1035,13 +1080,13 @@ function NoteEditDialog({ note, instruments, allInstruments, onSave, onDelete, o
             </div>
           </div>
 
-          {/* Instrument */}
+          {/* Instrument - 只显示当前轨道的音色 */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-slate-300">
               Instrument
             </label>
             <div className="space-y-2 bg-slate-800 rounded-lg p-3 border border-slate-600 max-h-48 overflow-y-auto">
-              {Object.values(allInstruments).flat().map((instrument) => (
+              {instruments.map((instrument) => (
                 <button
                   key={instrument.id}
                   onClick={() => setEditedNote({ ...editedNote, instrumentType: instrument.id })}
