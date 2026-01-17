@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef, MouseEvent, useEffect } from 'react';
+import { useState, useRef, MouseEvent, useEffect, DragEvent } from 'react';
 import { Button } from '@/components/ui/button';
-import { X, Play, Plus, Volume2 } from 'lucide-react';
+import { X, Play, Plus, Volume2, GripVertical } from 'lucide-react';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
 
 export type NoteType = 'C' | 'C#' | 'D' | 'D#' | 'E' | 'F' | 'F#' | 'G' | 'G#' | 'A' | 'A#' | 'B';
@@ -70,7 +70,7 @@ const TOTAL_BARS = 8;
 const BEATS_PER_BAR = 4;
 const SIXTEENTH_NOTES_PER_BEAT = 4;
 const TOTAL_SIXTEENTH_NOTES = TOTAL_BARS * BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT;
-const DEFAULT_DURATION = SIXTEENTH_NOTES_PER_BEAT; // 默认4分音符 = 4个16分音符
+const DEFAULT_DURATION = SIXTEENTH_NOTES_PER_BEAT;
 
 const WHITE_NOTES: NoteType[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const BLACK_NOTES: NoteType[] = ['C#', 'D#', 'F#', 'G#', 'A#'];
@@ -87,9 +87,18 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   const [draggedNote, setDraggedNote] = useState<{ note: PianoNote; startX: number; startY: number; startNote?: PianoNote } | null>(null);
   const [resizeNote, setResizeNote] = useState<{ note: PianoNote; startX: number } | null>(null);
   const [hoveredNote, setHoveredNote] = useState<string | null>(null);
+  
+  // 拖拽音源到网格的状态
+  const [isDraggingInstrument, setIsDraggingInstrument] = useState(false);
+  const [draggedInstrument, setDraggedInstrument] = useState<InstrumentPreset | null>(null);
+  const [dragPreview, setDragPreview] = useState<{ x: number; y: number; visible: boolean } | null>(null);
+  
+  // 时间条拖拽状态
+  const [isDraggingTimeline, setIsDraggingTimeline] = useState(false);
 
   const audioEngine = useAudioEngine();
   const gridRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
   const playInterval = useRef<NodeJS.Timeout | null>(null);
   const pendingTimeouts = useRef<number[]>([]);
 
@@ -122,7 +131,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
 
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
-    const noiseNode = ctx.createOscillator();
 
     switch (drumType) {
       case 'kick':
@@ -148,7 +156,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
         oscillator.start();
         oscillator.stop(ctx.currentTime + 0.2);
 
-        // 添加噪声
         const bufferSize = ctx.sampleRate * 0.2;
         const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -216,7 +223,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     if (!audioEngine || !audioEngine['audioContext']) return;
     const ctx = audioEngine['audioContext'];
 
-    // 创建多个振荡器模拟合唱
     const numVoices = 3;
     const gainNode = ctx.createGain();
 
@@ -224,7 +230,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
       const oscillator = ctx.createOscillator();
       oscillator.type = type;
 
-      // 每个声部稍微失谐，产生合唱效果
       const detune = (Math.random() - 0.5) * 10;
       oscillator.frequency.value = frequency * (1 + detune / 1200);
 
@@ -246,13 +251,11 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
   // 播放控制
   const handlePlay = () => {
     if (isPlaying) {
-      // 立即停止
       setIsPlaying(false);
       if (playInterval.current) {
         clearInterval(playInterval.current);
         playInterval.current = null;
       }
-      // 清除所有待播放的定时器
       pendingTimeouts.current.forEach(id => clearTimeout(id));
       pendingTimeouts.current = [];
       return;
@@ -261,7 +264,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     setIsPlaying(true);
     let position = currentPosition;
 
-    // 调度所有音符播放
     notes.forEach((note) => {
       if (note.startTime >= position && note.startTime < position + TOTAL_SIXTEENTH_NOTES) {
         const delay = (note.startTime - position) * (60 / BPM) / SIXTEENTH_NOTES_PER_BEAT;
@@ -274,7 +276,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
       }
     });
 
-    // 播放指针移动
     playInterval.current = setInterval(() => {
       position += 1;
       if (position >= TOTAL_SIXTEENTH_NOTES) {
@@ -319,21 +320,57 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     return reversedIndex;
   };
 
-  // 添加音符
-  const handleGridClick = (e: MouseEvent<HTMLDivElement>) => {
-    if (!selectedInstrument || !gridRef.current) return;
+  // 从音源库开始拖拽
+  const handleInstrumentDragStart = (e: DragEvent<HTMLButtonElement>, instrument: InstrumentPreset) => {
+    setIsDraggingInstrument(true);
+    setDraggedInstrument(instrument);
+    setSelectedInstrument(instrument);
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', instrument.id);
+  };
+
+  // 处理拖拽在网格上的移动
+  const handleGridDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    
+    if (gridRef.current && isDraggingInstrument) {
+      const rect = gridRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      setDragPreview({ x, y, visible: true });
+    }
+  };
+
+  // 处理拖拽离开网格
+  const handleGridDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    // 只在真正离开时隐藏预览
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (rect && !(
+      e.clientX >= rect.left && e.clientX <= rect.right &&
+      e.clientY >= rect.top && e.clientY <= rect.bottom
+    )) {
+      setDragPreview(null);
+    }
+  };
+
+  // 处理拖拽放置
+  const handleGridDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingInstrument(false);
+    setDragPreview(null);
+
+    if (!draggedInstrument || !gridRef.current) return;
 
     const rect = gridRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - 64; // 减去钢琴键宽度
+    const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
     const cellWidth = rect.width / TOTAL_SIXTEENTH_NOTES;
     const cellHeight = rect.height / (PIANO_NOTES.length * OCTAVES.length);
 
-    // 计算拍子位置（自动对齐到网格）
     const sixteenthNoteIndex = Math.floor(x / cellWidth);
-
-    // 计算音符位置
     const noteIndex = Math.floor(y / cellHeight);
     const totalNotes = PIANO_NOTES.length * OCTAVES.length;
     const actualIndex = totalNotes - 1 - noteIndex;
@@ -351,11 +388,38 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
         startTime: sixteenthNoteIndex,
         duration: DEFAULT_DURATION,
         velocity: 0.8,
-        instrumentType: selectedInstrument.id
+        instrumentType: draggedInstrument.id
       };
 
       setNotes([...notes, newNote]);
       playNoteSound(newNote);
+    }
+
+    setDraggedInstrument(null);
+  };
+
+  // 时间条点击跳转
+  const handleTimelineClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (!timelineRef.current) return;
+    
+    const rect = timelineRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left - 64; // 减去钢琴键宽度
+    const width = rect.width - 64;
+    
+    const newPosition = Math.floor((x / width) * TOTAL_SIXTEENTH_NOTES);
+    setCurrentPosition(Math.max(0, Math.min(TOTAL_SIXTEENTH_NOTES - 1, newPosition)));
+    
+    // 如果正在播放，重新调度音符
+    if (isPlaying) {
+      setIsPlaying(false);
+      if (playInterval.current) {
+        clearInterval(playInterval.current);
+        playInterval.current = null;
+      }
+      pendingTimeouts.current.forEach(id => clearTimeout(id));
+      pendingTimeouts.current = [];
+      
+      setTimeout(() => handlePlay(), 0);
     }
   };
 
@@ -397,14 +461,12 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
       const cellWidth = rect.width / TOTAL_SIXTEENTH_NOTES;
       const cellHeight = rect.height / (PIANO_NOTES.length * OCTAVES.length);
 
-      // 计算新的拍子位置（自动对齐到网格）
       const deltaSixteenthNotes = Math.round(deltaX / cellWidth);
       const newStartTime = Math.max(0, Math.min(
         TOTAL_SIXTEENTH_NOTES - draggedNote.startNote.duration,
         draggedNote.startNote.startTime + deltaSixteenthNotes
       ));
 
-      // 计算新的音符位置
       const deltaNotes = Math.round(deltaY / cellHeight);
       const totalNotes = PIANO_NOTES.length * OCTAVES.length;
       const currentNoteIndex = getNoteGridPosition(draggedNote.startNote);
@@ -438,7 +500,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
       const deltaX = e.clientX - resizeNote.startX;
       const cellWidth = rect.width / TOTAL_SIXTEENTH_NOTES;
 
-      // 计算新的时值（自动对齐到网格，最小1个16分音符）
       const deltaSixteenthNotes = Math.round(deltaX / cellWidth);
       const newDuration = Math.max(1, Math.min(
         TOTAL_SIXTEENTH_NOTES - resizeNote.note.startTime,
@@ -481,27 +542,25 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
     }
   }, [isDragging, isResizing, draggedNote, resizeNote]);
 
-  // 清理定时器
   useEffect(() => {
     return () => {
       pendingTimeouts.current.forEach(id => clearTimeout(id));
     };
   }, []);
 
-  // 格式化时间显示
   const formatTime = (sixteenthNoteIndex: number) => {
     const beat = Math.floor(sixteenthNoteIndex / SIXTEENTH_NOTES_PER_BEAT);
     const bar = Math.floor(beat / BEATS_PER_BAR);
     const beatInBar = beat % BEATS_PER_BAR + 1;
     const sixteenthInBeat = sixteenthNoteIndex % SIXTEENTH_NOTES_PER_BEAT + 1;
-    return `${bar + 1}.${beatInBar}.${sixteenthInBeat}`;
+    return `${bar + 1}:${beatInBar}`;
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4" style={{ background: 'rgba(0, 0, 0, 0.95)', backdropFilter: 'blur(10px)' }}>
-      <div className="w-full max-w-7xl bg-slate-900 border-2 border-slate-700 rounded-lg overflow-hidden shadow-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center" style={{ background: 'rgba(0, 0, 0, 0.95)', backdropFilter: 'blur(10px)' }}>
+      <div className="w-full bg-slate-900 border-2 border-slate-700 rounded-lg overflow-hidden shadow-2xl flex flex-col" style={{ maxWidth: '98vw', height: '95vh' }}>
         {/* Header */}
         <div className="bg-slate-800 border-b border-slate-700 px-6 py-3 flex-shrink-0">
           <div className="flex items-center justify-between">
@@ -539,36 +598,42 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar - Instrument Selection */}
-          <div className="w-60 bg-slate-800 border-r border-slate-700 p-3 flex flex-col flex-shrink-0">
+          {/* Left Sidebar - Instrument Selection (Draggable) */}
+          <div className="w-72 bg-slate-800 border-r border-slate-700 p-4 flex flex-col flex-shrink-0">
             <h3 className="text-xs font-semibold text-white mb-3 flex items-center gap-2">
-              <Volume2 className="h-3 w-3" />
-              Instruments
+              <GripVertical className="h-3 w-3" />
+              Sound Library
             </h3>
-            <p className="text-[10px] text-slate-400 mb-3">Select an instrument, then click on the grid to add notes</p>
+            <p className="text-[10px] text-slate-400 mb-4">Drag sounds to the grid to add notes</p>
 
-            <div className="space-y-2 flex-1 overflow-auto">
+            <div className="space-y-3 flex-1 overflow-auto">
               {currentInstruments.map((instrument) => (
-                <Button
+                <button
                   key={instrument.id}
-                  variant={selectedInstrument?.id === instrument.id ? 'default' : 'outline'}
+                  draggable
+                  onDragStart={(e) => handleInstrumentDragStart(e, instrument)}
                   onClick={() => setSelectedInstrument(instrument)}
-                  className={`w-full justify-start text-xs h-8 ${
+                  className={`w-full text-left text-xs p-2 rounded-lg border transition-all duration-200 cursor-grab active:cursor-grabbing ${
                     selectedInstrument?.id === instrument.id
-                      ? 'bg-purple-600 hover:bg-purple-700'
-                      : 'border-slate-600 hover:border-purple-500 hover:bg-slate-700'
+                      ? 'bg-purple-600/20 border-purple-500 ring-2 ring-purple-500/50'
+                      : 'border-slate-700 bg-slate-900 hover:border-purple-400 hover:bg-slate-800'
                   }`}
+                  style={{
+                    boxShadow: selectedInstrument?.id === instrument.id ? `0 0 15px ${instrument.color}40` : 'none'
+                  }}
                 >
-                  <div
-                    className="w-3 h-3 rounded-full mr-2 flex-shrink-0"
-                    style={{ backgroundColor: instrument.color }}
-                  />
-                  {instrument.name}
-                </Button>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-4 h-4 rounded-md flex-shrink-0 shadow-lg"
+                      style={{ backgroundColor: instrument.color }}
+                    />
+                    <span className="font-medium">{instrument.name}</span>
+                  </div>
+                </button>
               ))}
             </div>
 
-            <div className="pt-3 border-t border-slate-700 mt-3 space-y-2">
+            <div className="pt-4 border-t border-slate-700 mt-4 space-y-2">
               <Button
                 onClick={() => onSave?.(notes)}
                 size="sm"
@@ -583,29 +648,33 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
           {/* Right - Piano Roll Grid */}
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             {/* Timeline Header */}
-            <div className="h-8 bg-slate-800 border-b border-slate-700 flex items-end relative flex-shrink-0">
+            <div 
+              ref={timelineRef}
+              className="h-10 bg-slate-800 border-b border-slate-700 flex items-end relative flex-shrink-0 cursor-pointer"
+              onClick={handleTimelineClick}
+            >
               <div className="w-16 flex-shrink-0" />
               <div className="flex-1 h-full relative">
                 {/* 时间线网格 */}
                 <div className="absolute inset-0 flex">
-                  {Array.from({ length: TOTAL_BARS * BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT }).map((_, i) => {
-                    const isStrong = i % SIXTEENTH_NOTES_PER_BEAT === 0;
-                    const isWeak = i % (SIXTEENTH_NOTES_PER_BEAT / 2) === 0;
+                  {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
+                    const isBar = i % SIXTEENTH_NOTES_PER_BEAT === 0;
+                    const isBeat = i % (SIXTEENTH_NOTES_PER_BEAT / 4) === 0;
                     return (
                       <div
                         key={i}
-                        className={`h-full border-r ${isStrong ? 'border-purple-500/50' : isWeak ? 'border-purple-500/20' : 'border-slate-700/30'}`}
+                        className={`h-full border-r ${isBar ? 'border-purple-500/60' : isBeat ? 'border-purple-500/30' : 'border-slate-700/20'}`}
                         style={{ width: `${100 / TOTAL_SIXTEENTH_NOTES}%` }}
                       />
                     );
                   })}
                 </div>
                 {/* 拍子标记 */}
-                <div className="absolute inset-x-0 top-0 h-5 bg-slate-900/50 flex items-center px-1">
+                <div className="absolute inset-x-0 top-0 h-6 bg-slate-900/60 flex items-center px-2">
                   {Array.from({ length: TOTAL_BARS * BEATS_PER_BAR }).map((_, i) => (
                     <span
                       key={i}
-                      className="absolute text-[10px] text-slate-400 font-medium whitespace-nowrap"
+                      className="absolute text-[10px] text-slate-300 font-medium whitespace-nowrap"
                       style={{ left: `${(i * SIXTEENTH_NOTES_PER_BEAT) / TOTAL_SIXTEENTH_NOTES * 100}%` }}
                     >
                       {i + 1}
@@ -614,10 +683,10 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                 </div>
                 {/* 播放头 */}
                 <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                  className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 pointer-events-none transition-all duration-100 ease-out"
                   style={{ left: `${(currentPosition / TOTAL_SIXTEENTH_NOTES) * 100}%` }}
                 >
-                  <div className="absolute -top-0 -left-1.5 w-3 h-3 bg-red-500 rounded-full" />
+                  <div className="absolute -top-1 -left-1.5 w-3 h-3 bg-red-500 rounded-full shadow-lg shadow-red-500/50" />
                 </div>
               </div>
             </div>
@@ -627,7 +696,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
               {/* Piano Keys */}
               <div className="w-16 bg-slate-800 border-r border-slate-700 overflow-hidden flex-shrink-0">
                 <div className="relative h-full">
-                  {/* 从最低音(C3)到最高音(B5)依次排列 */}
                   {OCTAVES.map((octave) => (
                     PIANO_NOTES.map((note, noteIndex) => {
                       const isBlackKey = BLACK_NOTES.includes(note);
@@ -638,7 +706,6 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                       const heightPercent = (1 / totalNotes) * 100;
 
                       if (isBlackKey) {
-                        // 黑键
                         return (
                           <div
                             key={`${octave}-${note}`}
@@ -646,7 +713,7 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                               e.stopPropagation();
                               handlePianoKeyClick(note, octave);
                             }}
-                            className="absolute bg-slate-950 hover:bg-slate-800 active:bg-slate-700 border-x border-slate-800 cursor-pointer"
+                            className="absolute bg-slate-950 hover:bg-slate-800 active:bg-slate-700 border-x border-slate-800 cursor-pointer transition-colors"
                             style={{
                               left: '40%',
                               width: '40%',
@@ -656,12 +723,11 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                           />
                         );
                       } else {
-                        // 白键
                         return (
                           <button
                             key={`${octave}-${note}`}
                             onClick={() => handlePianoKeyClick(note, octave)}
-                            className="absolute w-full bg-white hover:bg-slate-100 active:bg-slate-200 border-b border-slate-300"
+                            className="absolute w-full bg-white hover:bg-slate-100 active:bg-slate-200 border-b border-slate-300 transition-colors"
                             style={{
                               top: `${topPercent}%`,
                               height: `${heightPercent}%`
@@ -677,20 +743,22 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
               {/* Note Grid */}
               <div
                 ref={gridRef}
-                className="flex-1 bg-slate-950 relative overflow-auto cursor-crosshair"
-                onClick={handleGridClick}
+                className="flex-1 bg-slate-950 relative overflow-hidden"
+                onDragOver={handleGridDragOver}
+                onDragLeave={handleGridDragLeave}
+                onDrop={handleGridDrop}
               >
                 {/* Grid Lines */}
                 <div className="absolute inset-0 pointer-events-none z-0">
                   {/* 垂直线 */}
-                  {Array.from({ length: TOTAL_BARS * BEATS_PER_BAR * SIXTEENTH_NOTES_PER_BEAT }).map((_, i) => {
-                    const isStrong = i % SIXTEENTH_NOTES_PER_BEAT === 0;
-                    const isWeak = i % (SIXTEENTH_NOTES_PER_BEAT / 2) === 0;
+                  {Array.from({ length: TOTAL_SIXTEENTH_NOTES }).map((_, i) => {
+                    const isBar = i % SIXTEENTH_NOTES_PER_BEAT === 0;
+                    const isBeat = i % (SIXTEENTH_NOTES_PER_BEAT / 4) === 0;
                     return (
                       <div
                         key={`v-${i}`}
                         className={`absolute top-0 bottom-0 border-r ${
-                          isStrong ? 'border-purple-500/30' : isWeak ? 'border-purple-500/15' : 'border-slate-800/10'
+                          isBar ? 'border-purple-500/30' : isBeat ? 'border-purple-500/15' : 'border-slate-800/10'
                         }`}
                         style={{ left: `${(i / TOTAL_SIXTEENTH_NOTES) * 100}%` }}
                       />
@@ -715,6 +783,20 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                   })}
                 </div>
 
+                {/* 拖拽预览 */}
+                {dragPreview && draggedInstrument && (
+                  <div
+                    className="absolute w-3 h-3 rounded-md pointer-events-none z-50 transition-transform duration-75"
+                    style={{
+                      left: `${dragPreview.x}px`,
+                      top: `${dragPreview.y}px`,
+                      backgroundColor: draggedInstrument.color,
+                      boxShadow: `0 0 20px ${draggedInstrument.color}80`,
+                      transform: 'translate(-50%, -50%) scale(1.2)'
+                    }}
+                  />
+                )}
+
                 {/* Notes */}
                 {notes.map((note) => {
                   const noteIndex = getNoteGridPosition(note);
@@ -726,15 +808,16 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                   return (
                     <div
                       key={note.id}
-                      className={`absolute h-4 rounded-sm cursor-move border transition-all z-10 ${
-                        isHovered ? 'border-white shadow-lg z-20' : 'border-transparent'
-                      } ${isDragged ? 'opacity-60 scale-105 z-30' : ''}`}
+                      className={`absolute h-4 rounded-sm cursor-move border transition-all duration-150 z-10 ${
+                        isHovered ? 'border-white shadow-lg shadow-purple-500/20 z-20' : 'border-transparent'
+                      } ${isDragged ? 'opacity-70 scale-105 z-30 shadow-2xl' : ''}`}
                       style={{
                         left: `${(note.startTime / TOTAL_SIXTEENTH_NOTES) * 100}%`,
                         width: `${(note.duration / TOTAL_SIXTEENTH_NOTES) * 100}%`,
                         top: `${(noteIndex / (PIANO_NOTES.length * OCTAVES.length)) * 100}%`,
                         backgroundColor: instrument?.color || '#a855f7',
                         minWidth: `${100 / TOTAL_SIXTEENTH_NOTES}%`,
+                        boxShadow: isHovered ? `0 0 20px ${instrument?.color}60` : 'none'
                       }}
                       onMouseDown={(e) => handleNoteMouseDown(e, note)}
                       onMouseEnter={() => setHoveredNote(note.id)}
@@ -742,13 +825,13 @@ export function PianoRollNew({ isOpen, onClose, trackId, trackName, trackType, o
                       onDoubleClick={() => handleNoteDelete(note.id)}
                     >
                       <div
-                        className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize ${
-                          isHovered ? 'bg-white/50' : 'bg-white/30'
+                        className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize rounded-r-sm transition-all duration-150 ${
+                          isHovered ? 'bg-white/60' : 'bg-white/20'
                         }`}
                         onMouseDown={(e) => handleNoteResizeMouseDown(e, note)}
                       />
                       {isHovered && (
-                        <div className="absolute -top-5 left-0 bg-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap z-50">
+                        <div className="absolute -top-6 left-0 bg-slate-800/95 text-white text-[9px] px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50 border border-slate-700">
                           {formatTime(note.startTime)}
                         </div>
                       )}
