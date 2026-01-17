@@ -4,8 +4,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Music, X, Piano, Edit3, Trash2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Music, X, Piano, Edit3, Trash2, Eye } from 'lucide-react';
 import { PianoRollNew, PianoNote } from '@/components/piano-roll-new';
+import { PianoRollReadonly } from '@/components/piano-roll-readonly';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
 
 type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
@@ -129,6 +130,11 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
   const [selectedTrackForPiano, setSelectedTrackForPiano] = useState<Track | null>(null);
   const [selectedClipForPiano, setSelectedClipForPiano] = useState<AudioClip | null>(null);
   const [draggingClip, setDraggingClip] = useState<{ trackId: TrackId; clipId: string; startX: number; originalStart: number } | null>(null);
+
+  // 只读钢琴帘状态
+  const [readonlyPianoRollOpen, setReadonlyPianoRollOpen] = useState(false);
+  const [selectedTrackForReadonly, setSelectedTrackForReadonly] = useState<Track | null>(null);
+  const [selectedClipForReadonly, setSelectedClipForReadonly] = useState<AudioClip | null>(null);
 
   const audioEngine = useAudioEngine();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -372,7 +378,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
     }
   }, [draggingClip]);
 
-  // 打开钢琴帘
+  // 打开钢琴帘（可编辑）
   const handleOpenPianoRoll = (trackId: TrackId, clipId?: string) => {
     const track = tracks.find(t => t.id === trackId);
     if (!track) return;
@@ -403,6 +409,17 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
       }
     }
     setPianoRollOpen(true);
+  };
+
+  // 打开只读钢琴帘（查看他人音轨）
+  const handleOpenReadonlyPianoRoll = (trackId: TrackId, clipId: string) => {
+    const track = tracks.find(t => t.id === trackId);
+    const clip = track?.clips.find(c => c.id === clipId);
+    if (!track || !clip) return;
+
+    setSelectedTrackForReadonly(track);
+    setSelectedClipForReadonly(clip);
+    setReadonlyPianoRollOpen(true);
   };
 
   // 保存钢琴音符
@@ -694,19 +711,52 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                           }}
                           onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)}
                         >
-                          {/* 波形可视化 */}
-                          <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-40 px-2">
-                            {Array.from({ length: 20 }).map((_, i) => (
-                              <div
-                                key={i}
-                                className="rounded-full"
-                                style={{
-                                  width: '4px',
-                                  height: `${40 + Math.random() * 50}%`,
-                                  backgroundColor: clip.color
-                                }}
-                              />
-                            ))}
+                          {/* 波形可视化 / 音符分布 */}
+                          <div className="absolute inset-0 overflow-hidden">
+                            {clip.pianoNotes && clip.pianoNotes.length > 0 ? (
+                              // 显示真实的音符分布
+                              <div className="absolute inset-0 flex">
+                                {clip.pianoNotes.map((note, idx) => {
+                                  const noteIndex = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].indexOf(note.note);
+                                  const octaveOffset = (note.octave - 3) * 12; // OCTAVES从3开始
+                                  const noteTotalIndex = octaveOffset + noteIndex;
+                                  const totalNotes = 3 * 12; // 3个八度
+                                  const reversedIndex = totalNotes - 1 - noteTotalIndex;
+                                  const topPercent = (reversedIndex / totalNotes) * 100;
+                                  const heightPercent = (1 / totalNotes) * 100;
+
+                                  return (
+                                    <div
+                                      key={note.id}
+                                      className="absolute border border-white/30 rounded-sm"
+                                      style={{
+                                        left: `${(note.startTime / 32) * 100}%`, // 假设clip时长为32个16分音符（8拍）
+                                        width: `${(note.duration / 32) * 100}%`,
+                                        top: `${topPercent}%`,
+                                        height: `${heightPercent}%`,
+                                        backgroundColor: clip.color,
+                                        minWidth: '3px'
+                                      }}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              // 假波形（当没有音符时）
+                              <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-40 px-2">
+                                {Array.from({ length: 20 }).map((_, i) => (
+                                  <div
+                                    key={i}
+                                    className="rounded-full"
+                                    style={{
+                                      width: '4px',
+                                      height: `${40 + Math.random() * 50}%`,
+                                      backgroundColor: clip.color
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )}
                           </div>
 
                           {/* 文件名和操作 */}
@@ -722,6 +772,18 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
                               )}
                             </div>
                             <div className="flex items-center gap-1 pointer-events-auto">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenReadonlyPianoRoll(track.id, clip.id);
+                                }}
+                                className="h-6 w-6 p-0 text-blue-300 hover:text-blue-200 hover:bg-blue-500/30 rounded-full"
+                                title="View (Read-only)"
+                              >
+                                <Eye className="h-3 w-3" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -810,7 +872,7 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
         </Card>
       </div>
 
-      {/* 钢琴帘模态框 */}
+      {/* 钢琴帘模态框（可编辑） */}
       <PianoRollNew
         isOpen={pianoRollOpen}
         onClose={() => setPianoRollOpen(false)}
@@ -819,6 +881,16 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
         trackType={trackType}
         onSave={handleSavePianoNotes}
         initialNotes={selectedClipForPiano?.pianoNotes}
+      />
+
+      {/* 只读钢琴帘模态框（查看他人） */}
+      <PianoRollReadonly
+        isOpen={readonlyPianoRollOpen}
+        onClose={() => setReadonlyPianoRollOpen(false)}
+        trackName={selectedTrackForReadonly?.name || ''}
+        trackType={selectedTrackForReadonly?.type || 'Synth'}
+        notes={selectedClipForReadonly?.pianoNotes || []}
+        color={selectedClipForReadonly?.color || '#a855f7'}
       />
     </div>
   );
