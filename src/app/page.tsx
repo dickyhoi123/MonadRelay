@@ -85,10 +85,11 @@ const trackColors: Record<TrackType, string> = {
 };
 
 function HomePage() {
-  const { isConnected } = useWallet();
+  const { isConnected, address } = useWallet();
   const [sessions, setSessions] = useState<Session[]>(mockSessions);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showWalletDialog, setShowWalletDialog] = useState(false);
+  const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [newSession, setNewSession] = useState({
     name: '',
     description: '',
@@ -126,40 +127,86 @@ function HomePage() {
       totalTracks: newSession.maxTracks,
       currentTrackType: 'Drum',
       isFinalized: false,
-      contributors: [],
+      contributors: address ? [address] : [],
       createdAt: Date.now()
     };
     setSessions([session, ...sessions]);
     setShowCreateDialog(false);
     setNewSession({ name: '', description: '', genre: '', bpm: 120, maxTracks: 4 });
+    // 立即打开编辑器
+    setEditingSession(session);
   };
 
   const handleJoinSession = (sessionId: number) => {
-    if (!isConnected) {
+    if (!isConnected || !address) {
       setShowWalletDialog(true);
+      return;
+    }
+
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    // 检查是否已加入过
+    const hasJoined = session.contributors.includes(address);
+    if (hasJoined) {
+      // 如果已经加入过，直接打开编辑器
+      setEditingSession(session);
+      return;
+    }
+
+    // 检查会话是否已完成
+    if (session.isFinalized) {
+      return;
+    }
+
+    // 检查是否已满
+    if (session.progress >= session.totalTracks) {
       return;
     }
     
     setLoadingStates(prev => ({ ...prev, [sessionId]: true }));
     
     setTimeout(() => {
-      const session = sessions.find(s => s.id === sessionId);
-      if (session && session.progress < session.totalTracks) {
-        setSessions(sessions.map(s => {
-          if (s.id === sessionId) {
-            return {
-              ...s,
-              progress: s.progress + 1,
-              currentTrackType: trackTypes[s.progress + 1] || s.currentTrackType,
-              contributors: [...s.contributors, Math.random().toString(16).slice(0, 16)],
-              isFinalized: s.progress + 1 >= s.totalTracks
-            };
-          }
-          return s;
-        }));
+      setSessions(sessions.map(s => {
+        if (s.id === sessionId) {
+          return {
+            ...s,
+            progress: s.progress + 1,
+            currentTrackType: trackTypes[s.progress + 1] || s.currentTrackType,
+            contributors: [...s.contributors, address],
+            isFinalized: s.progress + 1 >= s.totalTracks
+          };
+        }
+        return s;
+      }));
+
+      // 更新会话后立即打开编辑器
+      const updatedSession = sessions.find(s => s.id === sessionId);
+      if (updatedSession) {
+        setEditingSession({
+          ...updatedSession,
+          progress: updatedSession.progress + 1,
+          contributors: [...updatedSession.contributors, address],
+          currentTrackType: trackTypes[updatedSession.progress] || updatedSession.currentTrackType
+        });
       }
+      
       setLoadingStates(prev => ({ ...prev, [sessionId]: false }));
     }, 1000);
+  };
+
+  const handleEditorSave = (data: any) => {
+    // 保存音轨数据后关闭编辑器
+    setEditingSession(null);
+  };
+
+  const handleEditorCancel = () => {
+    // 取消编辑，关闭编辑器
+    setEditingSession(null);
+  };
+
+  const hasJoinedSession = (session: Session) => {
+    return !!(address && session.contributors.includes(address));
   };
 
   return (
@@ -371,15 +418,27 @@ function HomePage() {
                     <div className="flex gap-2">
                       <Button
                         onClick={() => handleJoinSession(session.id)}
-                        disabled={!isConnected || loadingStates[session.id] || session.isFinalized}
+                        disabled={!isConnected || loadingStates[session.id] || session.isFinalized || (session.progress >= session.totalTracks) || hasJoinedSession(session)}
                         className="flex-1 bg-purple-600 hover:bg-purple-700"
                       >
                         {loadingStates[session.id] ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Joining...
+                          </>
+                        ) : hasJoinedSession(session) ? (
+                          <>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Track
+                          </>
+                        ) : session.progress < session.totalTracks ? (
+                          <>
+                            <Music className="h-4 w-4 mr-2" />
+                            Join & Upload
+                          </>
                         ) : (
-                          <Music className="h-4 w-4 mr-2" />
+                          'Full'
                         )}
-                        {session.progress < session.totalTracks ? 'Join & Upload' : 'Full'}
                       </Button>
                       <Button
                         variant="outline"
@@ -451,6 +510,25 @@ function HomePage() {
                 sessionName={selectedSessionForChat.name}
               />
             </div>
+          </div>
+        )}
+
+        {/* Music Editor Dialog - Full screen modal */}
+        {editingSession && (
+          <div className="fixed inset-0 z-50 bg-slate-950 overflow-auto">
+            <button
+              onClick={handleEditorCancel}
+              className="absolute top-6 right-6 z-50 p-3 bg-slate-900 hover:bg-slate-800 rounded-full border border-slate-700 text-slate-400 hover:text-white transition-all shadow-lg"
+            >
+              <X className="h-6 w-6" />
+            </button>
+            <MusicEditor
+              sessionId={editingSession.id}
+              sessionName={editingSession.name}
+              trackType={editingSession.currentTrackType}
+              onSave={handleEditorSave}
+              onCancel={handleEditorCancel}
+            />
           </div>
         )}
 
