@@ -21,11 +21,21 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
         bool isMinted;                  // 是否已铸造
         uint256 totalRevenue;           // 总收益
     }
+    
+    // 组合音乐数据结构（可选：如果需要直接在 Master NFT 中存储完整的组合数据）
+    struct CompositionMusicData {
+        uint8 bpm;                      // BPM
+        uint16 totalSixteenthNotes;      // 总16分音符数
+        bytes[] encodedTracks;           // 所有音轨的编码数据（索引对应 trackIds）
+    }
 
     uint256 private _nextTokenId;
     
     // Token ID 到元数据的映射
     mapping(uint256 => CompositionMetadata) public compositionMetadata;
+    
+    // Token ID 到组合音乐数据的映射
+    mapping(uint256 => CompositionMusicData) public compositionMusicData;
     
     // Session ID 到 Master Token ID 的映射
     mapping(uint256 => uint256) public sessionToMasterToken;
@@ -67,7 +77,7 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
      * @param sessionId Session ID
      * @param contributors 贡献者地址列表
      * @param trackIds 关联的 Track NFT ID 列表
-     * @param _tokenURI 元数据 URI
+     * @param _tokenURI 元数据 URI（可选，可以为空）
      */
     function mintMaster(
         address to,
@@ -79,6 +89,7 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
         require(contributors.length == trackIds.length, "Length mismatch");
         require(contributors.length > 0, "No contributors");
         require(sessionToMasterToken[sessionId] == 0, "Already minted");
+        require(trackIds.length <= 4, "Too many tracks"); // 限制最多 4 条音轨
         
         uint256 masterTokenId = _nextTokenId++;
         
@@ -93,6 +104,13 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
             createdAt: block.timestamp,
             isMinted: true,
             totalRevenue: 0
+        });
+        
+        // 初始化空的音乐数据
+        compositionMusicData[masterTokenId] = CompositionMusicData({
+            bpm: 120, // 默认 BPM
+            totalSixteenthNotes: 0,
+            encodedTracks: new bytes[](trackIds.length)
         });
         
         // 记录 Session 映射
@@ -194,6 +212,22 @@ contract MasterComposition is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard
             metadata.trackIds,
             metadata.createdAt,
             metadata.totalRevenue
+        );
+    }
+
+    /**
+     * @dev 获取组合的音乐数据（如果有）
+     */
+    function getCompositionMusicData(uint256 masterTokenId) external view returns (
+        uint8 bpm,
+        uint16 totalSixteenthNotes,
+        bytes[] memory encodedTracks
+    ) {
+        CompositionMusicData memory data = compositionMusicData[masterTokenId];
+        return (
+            data.bpm,
+            data.totalSixteenthNotes,
+            data.encodedTracks
         );
     }
 
