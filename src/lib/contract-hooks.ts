@@ -378,19 +378,31 @@ export async function getMultipleSessions(
   // 过滤成功的请求
   return sessions
     .filter((result): result is PromiseFulfilledResult<{ sessionId: number; info: any }> => result.status === 'fulfilled')
-    .map(result => ({
-      id: result.value.info.id,
-      name: result.value.info.sessionName,
-      description: result.value.info.description,
-      genre: result.value.info.genre,
-      bpm: Number(result.value.info.bpm),
-      maxTracks: Number(result.value.info.maxTracks),
-      progress: Number(result.value.info.currentTrackIndex),
-      isFinalized: result.value.info.isFinalized,
-      contributors: result.value.info.contributors,
-      trackIds: result.value.info.trackIds,
-      trackFilledStatus: result.value.info.trackFilledStatus,
-      createdAt: Number(result.value.info.createdAt),
-      completedAt: Number(result.value.info.completedAt)
-    }));
+    .map(result => {
+      // info返回的是数组，需要按索引访问
+      // 0: id, 1: sessionName, 2: description, 3: genre, 4: bpm, 5: maxTracks
+      // 6: currentTrackIndex, 7: isFinalized, 8: createdAt, 9: completedAt
+      // 10: contributors, 11: trackIds, 12: trackFilledStatus
+      console.log(`[getMultipleSessions] Mapping session data:`, {
+        rawInfo: result.value.info,
+        sessionId: result.value.sessionId,
+        infoArray: Array.isArray(result.value.info) ? result.value.info : 'Not an array'
+      });
+
+      return {
+        id: result.value.info[0],  // uint256 id
+        name: result.value.info[1],  // string sessionName
+        description: result.value.info[2],  // string description
+        genre: result.value.info[3],  // string genre
+        bpm: Number(result.value.info[4]),  // uint256 bpm
+        maxTracks: Number(result.value.info[5]),  // uint256 maxTracks
+        progress: Number(result.value.info[6]),  // uint256 currentTrackIndex
+        isFinalized: result.value.info[7],  // bool isFinalized
+        contributors: result.value.info[10],  // address[] contributors
+        trackIds: result.value.info[11],  // uint256[] trackIds
+        trackFilledStatus: result.value.info[12],  // bool[4] trackFilledStatus
+        createdAt: Number(result.value.info[8]),  // uint256 createdAt
+        completedAt: Number(result.value.info[9])  // uint256 completedAt
+      };
+    });
 }
