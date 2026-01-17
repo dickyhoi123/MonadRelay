@@ -734,6 +734,40 @@ function HomePage() {
     setReadonlySession(session);
   };
 
+  const handleGetMasterNFTId = async (session: Session) => {
+    if (!isConnected || !address) {
+      setShowWalletDialog(true);
+      return;
+    }
+
+    try {
+      setLoadingStates(prev => ({ ...prev, [`get-nft-id-${session.id}`]: true }));
+
+      // 调用合约获取Master NFT Token ID
+      const tokenId = await getSessionMasterToken(session.id);
+
+      console.log('[Get Master NFT ID] Token ID:', tokenId);
+
+      if (tokenId && tokenId > 0) {
+        // 更新Session的masterTokenId
+        setSessions(prevSessions =>
+          prevSessions.map(s =>
+            s.id === session.id ? { ...s, masterTokenId: Number(tokenId) } : s
+          )
+        );
+
+        showToast('success', `Master NFT ID: ${tokenId}`);
+      } else {
+        showToast('info', 'No Master NFT found for this session. Please mint one first.');
+      }
+    } catch (error) {
+      console.error('[Get Master NFT ID] Failed:', error);
+      showToast('error', `Failed to get Master NFT ID: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [`get-nft-id-${session.id}`]: false }));
+    }
+  };
+
   const hasJoinedSession = (session: Session) => {
     return !!(address && session.contributors.includes(address));
   };
@@ -1113,14 +1147,36 @@ function HomePage() {
                       {/* Main Action Buttons */}
                       <div className="flex gap-2">
                         {session.isFinalized ? (
-                          <Button
-                            onClick={() => handlePlayMasterNFT(session)}
-                            disabled={!mounted || !isConnected}
-                            className="flex-1 bg-purple-600 hover:bg-purple-700"
-                          >
-                            <Play className="h-4 w-4 mr-2" />
-                            {session.masterTokenId ? 'Play NFT' : 'Listen'}
-                          </Button>
+                          <>
+                            <Button
+                              onClick={() => handlePlayMasterNFT(session)}
+                              disabled={!mounted || !isConnected}
+                              className="flex-1 bg-purple-600 hover:bg-purple-700"
+                            >
+                              <Play className="h-4 w-4 mr-2" />
+                              {session.masterTokenId ? 'Play NFT' : 'Listen'}
+                            </Button>
+                            {!session.masterTokenId && (
+                              <Button
+                                onClick={() => handleGetMasterNFTId(session)}
+                                disabled={!mounted || !isConnected || loadingStates[`get-nft-id-${session.id}`]}
+                                variant="outline"
+                                className="border-pink-500 text-pink-400 hover:bg-pink-600 hover:text-white"
+                              >
+                                {loadingStates[`get-nft-id-${session.id}`] ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Getting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Gem className="h-4 w-4 mr-2" />
+                                    Get NFT ID
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </>
                         ) : session.progress >= session.totalTracks ? (
                           <>
                             {/* Mint Master NFT Button */}
@@ -1540,6 +1596,15 @@ function HomePage() {
                       </p>
                     </div>
                     <div className="flex gap-2">
+                      {/* Master NFT Badge */}
+                      {session.masterTokenId && (
+                        <div className="flex items-center justify-center gap-2 py-2 px-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg">
+                          <Gem className="h-4 w-4 text-white" />
+                          <span className="text-white text-sm font-medium">Master NFT # {session.masterTokenId}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
                       <Button
                         variant="outline"
                         onClick={() => setReadonlySession(session)}
@@ -1549,6 +1614,26 @@ function HomePage() {
                         <Music className="h-4 w-4 mr-2" />
                         Listen
                       </Button>
+                      {!session.masterTokenId && (
+                        <Button
+                          onClick={() => handleGetMasterNFTId(session)}
+                          disabled={!mounted || !isConnected || loadingStates[`get-nft-id-${session.id}`]}
+                          variant="outline"
+                          className="border-pink-500 text-pink-400 hover:bg-pink-600 hover:text-white"
+                        >
+                          {loadingStates[`get-nft-id-${session.id}`] ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Getting...
+                            </>
+                          ) : (
+                            <>
+                              <Gem className="h-4 w-4 mr-2" />
+                              Get NFT ID
+                            </>
+                          )}
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         onClick={() => setSelectedSessionForChat(session)}
