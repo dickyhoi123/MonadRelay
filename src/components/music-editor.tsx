@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Play, Pause, SkipBack, SkipForward, Save, Upload, Volume2, Music, X, Piano, Edit3, Trash2 } from 'lucide-react';
-import { PianoRoll, PianoNote } from '@/components/piano-roll';
+import { PianoRollNew, PianoNote } from '@/components/piano-roll-new';
 import { useAudioEngine, noteToFrequency } from '@/lib/audio-engine';
 
 type TrackType = 'Drum' | 'Bass' | 'Synth' | 'Vocal';
@@ -760,11 +760,12 @@ export function MusicEditor({ sessionId, sessionName, trackType, onSave, onCance
       </div>
 
       {/* 钢琴帘模态框 */}
-      <PianoRoll
+      <PianoRollNew
         isOpen={pianoRollOpen}
         onClose={() => setPianoRollOpen(false)}
         trackId={selectedTrackForPiano?.id || ''}
         trackName={selectedTrackForPiano?.name || ''}
+        trackType={trackType}
         onSave={handleSavePianoNotes}
         initialNotes={selectedClipForPiano?.pianoNotes}
       />
